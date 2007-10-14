@@ -13,6 +13,7 @@
 int p_asprintf(char **strp, const char *fmt, ...);
 
 #define FILE_MAX      1024
+#define BUFFER_MAX    1024
 #define SUMMARY_WIDTH 58
 #define PADDING_WIDTH 6
 
@@ -216,6 +217,24 @@ int ntx_list(char **tags, int tagc)
   return 0;
 }
 
+int ntx_put(char *id)
+{
+  FILE *f;
+  char file[FILE_MAX];
+  char buffer[BUFFER_MAX];
+
+  if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
+
+  if(!(f = fopen(file, "r"))) {
+    printf("ERROR - Invalid ID %s\n", id);
+    exit(EXIT_FAILURE);
+  }
+
+  /* Duplicate each line from the note to STDOUT. */
+  while(fgets(buffer, BUFFER_MAX, f)) fputs(buffer, stdout);
+  return 0;
+}
+
 int ntx_del(char *id)
 {
   return 0;
@@ -226,9 +245,11 @@ void ntx_usage(int retcode)
   puts("Usage:\tntx [mode] [arguments] ..\n");
   puts("Modes:\t-a [tags]\t\tAdd a note from STDIN to tags.");
   puts("\t-e [hex]\t\tEdit the note identified by the ID hex.");
+  puts("\t-p [hex]\t\tPrint the note identified by the ID hex to STDOUT.");
   puts("\t-l <tags>\t\tList the set of notes from the union of tags.");
   puts("\t-d [hex]\t\tDelete the node identified by the ID hex.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
+  puts("");
 
   exit(retcode);
 }
@@ -273,6 +294,11 @@ int main(int argc, char **argv)
     }
   } else if(argv[1][1] == 'l' && argc >= 2) {
     if(ntx_list(argv+2, argc - 2) != 0) {
+      printf("ERROR - Unknown execution failure.\n");
+      exit(EXIT_FAILURE);
+    }
+  } else if(argv[1][1] == 'p' && argc == 3) {
+    if(ntx_put(argv[2]) != 0) {
       printf("ERROR - Unknown execution failure.\n");
       exit(EXIT_FAILURE);
     }
