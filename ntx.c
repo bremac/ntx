@@ -9,9 +9,6 @@
 #include <zlib.h>
 #include "hash_table.h"
 
-/* Prototypes for some less common functions. */
-int p_asprintf(char **strp, const char *fmt, ...);
-
 #define FILE_MAX      1024
 #define BUFFER_MAX    1024
 #define SUMMARY_WIDTH 58
@@ -171,12 +168,14 @@ int ntx_list(char **tags, int tagc)
     hash_t **hashes = calloc(tagc-1, sizeof(hash_t *));
     struct stat temp;
     struct fstats *files = malloc(sizeof(struct fstats) * tagc);
-    unsigned int i, exists;
+    unsigned int i, len, exists;
 
     /* Sort the files; We'll likely be best starting with the smallest. */
     /* Stat and load the files into the buffers for sorting. */
     for(i = 0; i < tagc; i++) {
-      if(!p_asprintf(&name, "tags/%s", tags[i])) return -1;
+      name = malloc(6 + strlen(tags[i]));
+      strcpy(name, "tags/");
+      strcat(name, tags[i]);
       if(stat(name, &temp) != 0) {
         printf("ERROR - No such tag: %s\n", tags[i]);
         exit(EXIT_FAILURE);
