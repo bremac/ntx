@@ -12,7 +12,7 @@
 #define FILE_MAX      1024
 #define BUFFER_MAX    1024
 #define SUMMARY_WIDTH 58
-#define PADDING_WIDTH 6
+#define PADDING_WIDTH 7
 
 char *home; /* Keep us from repeatedly calling getenv. */
 
@@ -53,17 +53,17 @@ int ntx_add(char **tags)
     puts("No new note was recorded.");
     return 0;
   }
-  fgets(note+4, SUMMARY_WIDTH+2, nout);
+  fgets(note+5, SUMMARY_WIDTH+2, nout);
   fclose(nout);
 
   /* Get the summary line, and write it in abbreviated form to each index. */
   /* Set a null at the maximum position to ensure we don't overdo it. */
-  temp = strchr(note+4, '\n');
+  temp = strchr(note+5, '\n');
   if(temp) temp[1] = '\0';
   else {
-    unsigned int end = strlen(note+4);
+    unsigned int end = strlen(note+5);
 
-    temp = note+4;
+    temp = note+5;
     temp[end-1] = '\n';
     temp[end-2] = '.';
     temp[end-3] = '.';
@@ -74,7 +74,8 @@ int ntx_add(char **tags)
   note[0] = file[6];
   note[1] = file[7];
   note[2] = file[8];
-  note[3] = '\t';
+  note[3] = file[9];
+  note[4] = '\t';
 
   for(; *tags != NULL; tags++) {
     if(!snprintf(file, FILE_MAX, "tags/%s", *tags)) return -1;
@@ -127,35 +128,43 @@ int ntx_sortstat(const void *a, const void *b)
 
 unsigned long hash_line(void *v)
 {
-  return hasht_hash((char*)v, strlen((char*)v), 0);
+  /* Just hash the 4-char prefix. */
+  return hasht_hash(((char*)v)+1, 4, 0);
 }
 
-hash_t *ntx_hashload(char *file)
+unsigned long hash_val(void *v)
 {
-  gzFile *f = gzopen(file, "r");
-  char line[SUMMARY_WIDTH + PADDING_WIDTH];
-  hash_t *table;
+  /* Just hash the 4-char prefix. */
+  return hasht_hash((char*)v, 4, 0);
+}
 
-  if(!f) {
-    printf("ERROR - Invalid index %s\n", file);
-    exit(EXIT_FAILURE);
-  }
+int cmp_line(void *a, void *b)
+{
+  /* Just compare the 4-char prefix. */
+#define Cabv(v) (((char*)a)[v] == ((char*)b)[v])
+  return ((Cabv(1) && Cabv(2) && Cabv(3) && Cabv(4)) ? 0 : 1);
+#undef  Cabv
+}
 
-  table = hasht_init(120, free, hash_line, hash_line, 
-                    (int(*)(void*, void*))strcmp,
-                    (int(*)(void*, void*))strcmp);
-
-  while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH))
-    hasht_add(table, strdup(line));
-
-  return table;
+int cmp_val(void *a, void *b)
+{
+  /* Just compare the 4-char prefix. */
+#define Cabv(v) (((char*)a)[v] == ((char*)b)[v-1])
+  return ((Cabv(1) && Cabv(2) && Cabv(3) && Cabv(4)) ? 0 : 1);
+#undef  Cabv
 }
 
 /* We use compression as much as possible to minimize loading times. */
-int ntx_list(char **tags, int tagc)
+int ntx_list(char **tags, unsigned int tagc)
 {
   char line[SUMMARY_WIDTH + PADDING_WIDTH];
   gzFile *f;
+
+  /* Too many tags for proper ref-counting, or even sane evaluation. */
+  if(tagc > 127) {
+    puts("ERROR - Too many (more than 127) tags.");
+    exit(EXIT_FAILURE);
+  }
 
   if(tagc == 0) { /* No tags specified, open the index. */
     f = gzopen("index", "r");
@@ -165,10 +174,10 @@ int ntx_list(char **tags, int tagc)
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
   } else { /* Calculate the union of the sets from the tag files. */
     char *name;
-    hash_t **hashes = calloc(tagc-1, sizeof(hash_t *));
+    hash_t *table;
     struct stat temp;
     struct fstats *files = malloc(sizeof(struct fstats) * tagc);
-    unsigned int i, len, exists;
+    unsigned int i, exists;
 
     /* Sort the files; We'll likely be best starting with the smallest. */
     /* Stat and load the files into the buffers for sorting. */
@@ -188,30 +197,51 @@ int ntx_list(char **tags, int tagc)
 
     /* Now, load the first, and check it in each hash. */
     f = gzopen(files[0].path, "r");
+    table = hasht_init(120, free, hash_line, hash_val, cmp_line, cmp_val);
+
+    if(!table) return -1;
+
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
-      exists = 1;
-      for(i = 0; i < tagc-1; i++) {
-        /* Load the file into the hash, if necessary. */
-        if(hashes[i] == NULL) hashes[i] = ntx_hashload(files[i+1].path);
-        if(hasht_get(hashes[i], line) == NULL) {
-          exists = 0;
-          break;
+      name = malloc(strlen(line)+2); /* Save room for the ref and null. */
+      if(!name) return -1;
+      name[0] = 1;
+      strcpy(name+1, line);
+      name = hasht_add(table, name);
+      if(name) {
+        puts(name);
+        free(name);
+      }
+    }
+    gzclose(f);
+   
+    /* Load and check each hash against this one, incrementing found refs. *
+     * We will abort if exists == 0, meaning none were found.              */
+    for(i = 1; i < tagc; i++) {
+      exists = 0;
+      f = gzopen(files[i].path, "r");
+      while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
+        if((name = hasht_get(table, line))) {
+          name[0]++; /* Increment the refcount. */
+          exists = 1;
         }
       }
-      if(exists) fputs(line, stdout);
+      gzclose(f);
+      if(exists == 0) {
+        puts("No notes belong to the intersection of the specified tags.");
+        exit(EXIT_FAILURE);
+      }
     }
 
-    /* Clean up the hashes and fstats structures. */
-    for(i = 0; i < tagc; i++) {
-      if(i < tagc-1) hasht_free(hashes[i]);
-      free(files[i].path);
-    }
+    /* Print all of the tags which had tagc references. */
+    while((name = hasht_next(table)))
+      if(name[0] == tagc) fputs(name+1, stdout);
+
+    /* Clean up the hash and fstats structures. */
+    hasht_free(table);
     free(files);
-    free(hashes);
   }
 
   fputc('\n', stdout);
-  gzclose(f);
 
   return 0;
 }

@@ -3,7 +3,7 @@ CFLAGS=-O3 -Wall
 LIBS=-lz
 .PHONY=clean
 
-SOURCE=ntx.c asprintf.c hash_table.c lookup2.c
+SOURCE=ntx.c hash_table.c lookup2.c
 
 OBJECT=$(SOURCE:.c=.o)
 
