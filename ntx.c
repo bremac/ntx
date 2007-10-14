@@ -249,7 +249,16 @@ void ntx_usage(int retcode)
   puts("\t-l <tags>\t\tList the set of notes from the union of tags.");
   puts("\t-d [hex]\t\tDelete the node identified by the ID hex.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
-  puts("");
+
+  puts("Input file format:");
+  puts("\tntx assumes that a short first line may be used as a summary of");
+  puts("\tthe note in question. No further assumptions are made about the");
+  puts("\ttype, format, or size of the file.\n");
+
+  puts("Notes on the output of 'ntx -l':");
+  puts("\t'ntx -l' outputs a hexidecimal ID, followed by a tab, and then a");
+  printf("\tbrief summary comprised of the first %d bytes of the first line\n", SUMMARY_WIDTH);
+  puts("\tof the saved note. This is currently not updated if a note changes.\n");
 
   exit(retcode);
 }
