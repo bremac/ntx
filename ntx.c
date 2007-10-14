@@ -24,10 +24,10 @@ int ntx_add(char **tags)
   char file[FILE_MAX], note[SUMMARY_WIDTH + PADDING_WIDTH], *temp;
   char *editor = getenv("EDITOR");
   pid_t child;
-  unsigned int hash = time(NULL) & 0xfff;
+  unsigned int hash;
 
   srand(time(NULL));
-  hash = rand() & 0xfff;
+  hash = rand() & 0xffff;
 
   if(!editor) {
     puts("ERROR - The environment variable EDITOR is unset, cannot continue.");
@@ -35,11 +35,11 @@ int ntx_add(char **tags)
   }
 
   while(1) {
-    if(!snprintf(file, FILE_MAX, "notes/%03x", hash))
+    if(!snprintf(file, FILE_MAX, "notes/%04x", hash))
        return -1;
     if(!(nout = fopen(file, "r"))) break;
     fclose(nout);
-    hash = (hash + 1) & 0xfff;
+    hash = (hash + 1) & 0xffff;
   }
 
   /* Fire up EDITOR to create the note. */
