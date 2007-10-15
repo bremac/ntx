@@ -14,8 +14,6 @@
 #define SUMMARY_WIDTH 58
 #define PADDING_WIDTH 7
 
-char *home; /* Keep us from repeatedly calling getenv. */
-
 /* XXX: Keep us from creating more than 1024 notes. */
 int ntx_add(char **tags)
 {
