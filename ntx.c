@@ -88,6 +88,9 @@ int ntx_add(char **tags)
   gzputs(f, note);
   gzclose(f);
 
+  /* Dump the summary to STDOUT as confirmation that everything went well. */
+  fputs(note, stdout);
+
   return 0;
 }
 
@@ -172,6 +175,20 @@ int ntx_list(char **tags, unsigned int tagc)
 
     /* Duplicate each line from the index to STDOUT. */
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
+  } else if(tagc == 1) { /* No need to calculate the intersection. */
+    char name[FILE_MAX];
+
+    strcpy(name, "tags/");
+    strncat(name, tags[0], FILE_MAX - strlen(name));
+
+    f = gzopen(name, "r");
+    if(!f) {
+      printf("ERROR - No such tag: %s\n", tags[0]);
+      exit(EXIT_FAILURE);
+    }
+
+    /* Duplicate each line from the index to STDOUT. */
+    while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
   } else { /* Calculate the union of the sets from the tag files. */
     char *name;
     hash_t *table;
@@ -195,12 +212,14 @@ int ntx_list(char **tags, unsigned int tagc)
 
     qsort(files, tagc, sizeof(struct fstats), ntx_sortstat);
 
-    /* Now, load the first, and check it in each hash. */
+    /* Now, load the first, and check it with each hash. */
+
     f = gzopen(files[0].path, "r");
     table = hasht_init(120, free, hash_line, hash_val, cmp_line, cmp_val);
 
     if(!table) return -1;
 
+    /* Read each line in the index into the hash. */
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
       name = malloc(strlen(line)+2); /* Save room for the ref and null. */
       if(!name) return -1;
@@ -232,7 +251,7 @@ int ntx_list(char **tags, unsigned int tagc)
       }
     }
 
-    /* Print all of the tags which had tagc references. */
+    /* Print all of the tags which had 'tagc' references. */
     while((name = hasht_next(table)))
       if(name[0] == tagc) fputs(name+1, stdout);
 
@@ -274,8 +293,8 @@ void ntx_usage(int retcode)
   puts("Usage:\tntx [mode] [arguments] ..\n");
   puts("Modes:\t-a [tags]\t\tAdd a note from STDIN to tags.");
   puts("\t-e [hex]\t\tEdit the note identified by the ID hex.");
-  puts("\t-p [hex]\t\tPrint the note identified by the ID hex to STDOUT.");
-  puts("\t-l <tags>\t\tList the set of notes from the union of tags.");
+  puts("\t-p [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
+  puts("\t-l <tags>\t\tList the notes in the intersection of tags.");
   puts("\t-d [hex]\t\tDelete the node identified by the ID hex.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
 
@@ -285,9 +304,10 @@ void ntx_usage(int retcode)
   puts("\ttype, format, or size of the file.\n");
 
   puts("Notes on the output of 'ntx -l':");
-  puts("\t'ntx -l' outputs a hexidecimal ID, followed by a tab, and then a");
-  printf("\tbrief summary comprised of the first %d bytes of the first line\n", SUMMARY_WIDTH);
-  puts("\tof the saved note. This is currently not updated if a note changes.\n");
+  puts("\t'ntx -l' outputs a four-byte hexidecimal ID, followed by a tab,");
+  printf("\tand then a brief summary comprised of the first %d bytes of the\n", SUMMARY_WIDTH);
+  puts("\tfirst line of the saved note. This is currently not updated when");
+  puts("\ta note changes.\n");
 
   exit(retcode);
 }
