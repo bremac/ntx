@@ -90,6 +90,8 @@ int ntx_add(char **tags)
     gzclose(f);
   }
 
+  /* XXX: Write the tags to the composite tags database. */
+
   f = gzopen("index", "a");
   gzputs(f, note);
   gzclose(f);
@@ -114,6 +116,9 @@ int ntx_edit(char *id)
   fclose(f);
 
   execlp(editor, editor, file, (char*)NULL);
+
+  /* XXX: Re-read file, compare headers, and rewrite if necessary. */
+
   return 0;
 }
 
@@ -284,7 +289,7 @@ char *ntx_buffer(char *file)
   if(!(bbuf = malloc(blen))) return NULL;
 
   /* Read the entire file into the buffer. */
-  while(len = gzread(f, bbuf + bpos, BUFFER_MAX)) {
+  while((len = gzread(f, bbuf + bpos, BUFFER_MAX))) {
     bpos += len;
     if((blen - bpos) < BUFFER_MAX) {
       blen += BUFFER_MAX;
@@ -292,12 +297,12 @@ char *ntx_buffer(char *file)
     }
   }
   gzclose(f);
+  return bbuf;
 }
 
 int ntx_replace(char *file, char *id, char *fix)
 {
   char *buf;
-  unsigned int len;
   char *ptr, *end;
   gzFile *f;
 
@@ -307,8 +312,9 @@ int ntx_replace(char *file, char *id, char *fix)
   /* Parse the buffer contents to find the given position. */
   for(ptr = buf; ptr; ptr = end+1) {
     end = strchr(ptr, '\n');
-    if(strncmp(id, ptr, 4) == 0) if(fix) gzputs(f, fix);
-    else {
+    if(strncmp(id, ptr, 4) == 0) {
+      if(fix) gzputs(f, fix);
+    } else {
       if(end) gzwrite(f, ptr, end-ptr);
       else gzputs(f, ptr);
     }
@@ -322,11 +328,9 @@ int ntx_replace(char *file, char *id, char *fix)
 char *ntx_find(char *file, char *id)
 {
   char *buf;
-  unsigned int len;
   char *ptr, *end;
 
-  if(!(buf = ntx_buffer(file))) return -1;
-  if(!(f = gzopen(file, "w"))) return -1;
+  if(!(buf = ntx_buffer(file))) return NULL;
 
   /* Parse the buffer contents to find the given position. */
   for(ptr = buf; ptr; ptr = end+1) {
@@ -340,14 +344,13 @@ char *ntx_find(char *file, char *id)
   }
   free(buf);
 
-  return 0;
+  return NULL;
 }
 
 int ntx_del(char *id)
 {
   char file[FILE_MAX], *buf, *ptr, *cur;
   unsigned int len;
-  gzFile *f;
 
   if(!strcpy(file, "tagged/")) return -1;
   len = strlen(file);
@@ -358,7 +361,7 @@ int ntx_del(char *id)
   /* Find the line describing the tags of the given ID. */
   buf = ntx_find(file, id);
 
-  cur = line + 5; /* Skip the ID, plus the tab. */
+  cur = buf + 5; /* Skip the ID, plus the tab. */
   while((ptr = strchr(cur, ';'))) {
     *ptr = '\0';
     /* Delete the tags - O(n) search through the affected indices. */
