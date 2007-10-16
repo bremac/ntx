@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -10,9 +11,19 @@
 #include "hash_table.h"
 
 #define FILE_MAX      1024
-#define BUFFER_MAX    1024
+#define BUFFER_MAX    8192
 #define SUMMARY_WIDTH 58
 #define PADDING_WIDTH 7
+
+void die(char *fmt, ...)
+{
+  va_list args;
+
+  va_start(args, fmt);
+  printf(fmt, args);
+  va_end(args);
+  exit(EXIT_FAILURE);
+}
 
 /* XXX: Keep us from creating more than 1024 notes. */
 int ntx_add(char **tags)
@@ -27,10 +38,7 @@ int ntx_add(char **tags)
   srand(time(NULL));
   hash = rand() & 0xffff;
 
-  if(!editor) {
-    puts("ERROR - The environment variable EDITOR is unset, cannot continue.");
-    exit(EXIT_FAILURE);
-  }
+  if(!editor) die("ERROR - The environment variable EDITOR is unset.");
 
   while(1) {
     if(!snprintf(file, FILE_MAX, "notes/%04x", hash))
@@ -98,18 +106,11 @@ int ntx_edit(char *id)
   char file[FILE_MAX];
   char *editor = getenv("EDITOR");
 
-  if(!editor) {
-    puts("ERROR - The environment variable EDITOR is unset, cannot continue.");
-    exit(EXIT_FAILURE);
-  }
-
+  if(!editor) die("ERROR - The environment variable EDITOR is unset.");
   if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
 
   /* Check that the note exists first. */
-  if(!(f = fopen(file, "r"))) {
-    printf("ERROR - Invalid ID %s\n", id);
-    exit(EXIT_FAILURE);
-  }
+  if(!(f = fopen(file, "r"))) die("ERROR - Invalid ID %s\n", id);
   fclose(f);
 
   execlp(editor, editor, file, (char*)NULL);
@@ -162,10 +163,7 @@ int ntx_list(char **tags, unsigned int tagc)
   gzFile *f;
 
   /* Too many tags for proper ref-counting, or even sane evaluation. */
-  if(tagc > 127) {
-    puts("ERROR - Too many (more than 127) tags.");
-    exit(EXIT_FAILURE);
-  }
+  if(tagc > 127) die("ERROR - Too many (more than 127) tags.");
 
   if(tagc == 0) { /* No tags specified, open the index. */
     f = gzopen("index", "r");
@@ -180,10 +178,7 @@ int ntx_list(char **tags, unsigned int tagc)
     strncat(name, tags[0], FILE_MAX - strlen(name));
 
     f = gzopen(name, "r");
-    if(!f) {
-      printf("ERROR - No such tag: %s\n", tags[0]);
-      exit(EXIT_FAILURE);
-    }
+    if(!f) die("ERROR - No such tag: %s\n", tags[0]);
 
     /* Duplicate each line from the index to STDOUT. */
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
@@ -200,10 +195,8 @@ int ntx_list(char **tags, unsigned int tagc)
       name = malloc(6 + strlen(tags[i]));
       strcpy(name, "tags/");
       strcat(name, tags[i]);
-      if(stat(name, &temp) != 0) {
-        printf("ERROR - No such tag: %s\n", tags[i]);
-        exit(EXIT_FAILURE);
-      }
+      if(stat(name, &temp) != 0) die("ERROR - No such tag: %s\n", tags[i]);
+
       files[i].path = name;
       files[i].size = temp.st_size;
     }
@@ -243,10 +236,7 @@ int ntx_list(char **tags, unsigned int tagc)
         }
       }
       gzclose(f);
-      if(exists == 0) {
-        puts("No notes belong to the intersection of the specified tags.");
-        exit(EXIT_FAILURE);
-      }
+      if(exists == 0) die("No notes exist in the intersection of those tags.");
     }
 
     /* Print all of the tags which had 'tagc' references. */
@@ -270,19 +260,132 @@ int ntx_put(char *id)
   char buffer[BUFFER_MAX];
 
   if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
-
-  if(!(f = fopen(file, "r"))) {
-    printf("ERROR - Invalid ID %s\n", id);
-    exit(EXIT_FAILURE);
-  }
+  if(!(f = fopen(file, "r"))) die("ERROR - Invalid ID %s\n", id);
 
   /* Duplicate each line from the note to STDOUT. */
   while(fgets(buffer, BUFFER_MAX, f)) fputs(buffer, stdout);
   return 0;
 }
 
+/* Open the file, read the whole thing in a line at a time,
+ * replacing the line beginning with the 4-digit hex 'id' with
+ * the line 'fix'.
+ * Because we don't know the max line length as we do when
+ * index files are guaranteed, we need to parse after we load.
+ */
+char *ntx_buffer(char *file)
+{
+  char *bbuf = NULL;
+  unsigned int blen = BUFFER_MAX, bpos = 0;
+  unsigned int len;
+  gzFile *f;
+
+  if(!(f = gzopen(file, "r"))) return NULL;
+  if(!(bbuf = malloc(blen))) return NULL;
+
+  /* Read the entire file into the buffer. */
+  while(len = gzread(f, bbuf + bpos, BUFFER_MAX)) {
+    bpos += len;
+    if((blen - bpos) < BUFFER_MAX) {
+      blen += BUFFER_MAX;
+      if(!(bbuf = realloc(bbuf, blen))) return NULL;
+    }
+  }
+  gzclose(f);
+}
+
+int ntx_replace(char *file, char *id, char *fix)
+{
+  char *buf;
+  unsigned int len;
+  char *ptr, *end;
+  gzFile *f;
+
+  if(!(buf = ntx_buffer(file))) return -1;
+  if(!(f = gzopen(file, "w"))) return -1;
+
+  /* Parse the buffer contents to find the given position. */
+  for(ptr = buf; ptr; ptr = end+1) {
+    end = strchr(ptr, '\n');
+    if(strncmp(id, ptr, 4) == 0) if(fix) gzputs(f, fix);
+    else {
+      if(end) gzwrite(f, ptr, end-ptr);
+      else gzputs(f, ptr);
+    }
+  }
+  gzclose(f);
+  free(buf);
+
+  return 0;
+}
+
+char *ntx_find(char *file, char *id)
+{
+  char *buf;
+  unsigned int len;
+  char *ptr, *end;
+
+  if(!(buf = ntx_buffer(file))) return -1;
+  if(!(f = gzopen(file, "w"))) return -1;
+
+  /* Parse the buffer contents to find the given position. */
+  for(ptr = buf; ptr; ptr = end+1) {
+    end = strchr(ptr, '\n');
+    if(strncmp(id, ptr, 4) == 0) {
+      *end = '\0';
+      ptr = strdup(ptr);
+      free(buf);
+      return ptr;
+    }
+  }
+  free(buf);
+
+  return 0;
+}
+
 int ntx_del(char *id)
 {
+  char file[FILE_MAX], *buf, *ptr, *cur;
+  unsigned int len;
+  gzFile *f;
+
+  if(!strcpy(file, "tagged/")) return -1;
+  len = strlen(file);
+  file[len]   = id[0];
+  file[len+1] = id[1];
+  file[len+2] = '\0';
+
+  /* Find the line describing the tags of the given ID. */
+  buf = ntx_find(file, id);
+
+  cur = line + 5; /* Skip the ID, plus the tab. */
+  while((ptr = strchr(cur, ';'))) {
+    *ptr = '\0';
+    /* Delete the tags - O(n) search through the affected indices. */
+    /* XXX: Error checking. */
+    if(!strcpy(file, "tags/")) return -1;
+    if(!strncat(file, cur, FILE_MAX-strlen(file))) return -1;
+    if(!ntx_replace(file, id, NULL)) return -1;
+    cur = ptr + 1;
+  }
+
+  /* Remove it from the index. */
+  if(!ntx_replace("index", id, NULL)) return -1;
+
+  /* Remove the backreference. */
+  if(!strcpy(file, "tagged/")) return -1;
+  len = strlen(file);
+  file[len]   = id[0];
+  file[len+1] = id[1];
+  file[len+2] = '\0';
+  if(!ntx_replace(file, id, NULL)) return -1;
+
+  /* Remove the note itself from notes/ */
+  if(!strcpy(file, "tagged/")) return -1;
+  if(!strncat(file, id, FILE_MAX-strlen(file))) return -1;
+  if(unlink(file) != 0) return -1;
+
+  free(buf);
   return 0;
 }
 
@@ -323,41 +426,25 @@ int main(int argc, char **argv)
   if(strlen(argv[1]) != 2 || argv[1][0] != '-') ntx_usage(EXIT_FAILURE);
 
   /* Ensure our target directory exists. */
-  if(!snprintf(file, FILE_MAX, "%s/.ntx", getenv("HOME"))) {
-    printf("ERROR - Unknown execution failure.\n");
-    exit(EXIT_FAILURE);
-  }
+  if(!snprintf(file, FILE_MAX, "%s/.ntx", getenv("HOME")))
+    die("ERROR - Unknown execution failure.\n");
 
   if(chdir(file) == -1) {
     mkdir(file, S_IRWXU);
-    if(chdir(file) == -1) {
-      printf("ERROR - Unknown execution failure.\n");
-      exit(EXIT_FAILURE);
-    }
+    if(chdir(file) == -1) die("ERROR - Unknown execution failure.\n");
     mkdir("tags", S_IRWXU);
     mkdir("notes", S_IRWXU);
   }
 
   if(argv[1][1] == 'a' && argc >= 3) {
-    if(ntx_add(argv+2) != 0) {
-      printf("ERROR - Unknown execution failure.\n");
-      exit(EXIT_FAILURE);
-    }
+    if(ntx_add(argv+2) != 0) die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'e' && argc == 3) {
-    if(ntx_edit(argv[2]) != 0) {
-      printf("ERROR - Unknown execution failure.\n");
-      exit(EXIT_FAILURE);
-    }
+    if(ntx_edit(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'l' && argc >= 2) {
-    if(ntx_list(argv+2, argc - 2) != 0) {
-      printf("ERROR - Unknown execution failure.\n");
-      exit(EXIT_FAILURE);
-    }
+    if(ntx_list(argv+2, argc - 2) != 0)
+      die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'p' && argc == 3) {
-    if(ntx_put(argv[2]) != 0) {
-      printf("ERROR - Unknown execution failure.\n");
-      exit(EXIT_FAILURE);
-    }
+    if(ntx_put(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'd' && argc == 3) {
     printf("ERROR - Feature not yet implemented.\n");
   } else ntx_usage(EXIT_FAILURE);
