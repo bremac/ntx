@@ -25,13 +25,115 @@ void die(char *fmt, ...)
   exit(EXIT_FAILURE);
 }
 
+/* 'buf' should be SUMMARY_WIDTH + 2 bytes long. */
+int ntx_summary(char *file, char *buf)
+{
+  FILE *f = fopen(file, "r");
+  char *temp;
+
+  if(!f) return -1;
+
+  fgets(buf, SUMMARY_WIDTH+2, f);
+  fclose(f);
+
+  /* Set a null at the maximum position to ensure we don't overdo it. */
+  temp = strchr(buf, '\n');
+  if(temp) temp[1] = '\0';
+  else {
+    unsigned int end = strlen(buf);
+
+    buf[end-1] = '\n';
+    buf[end-2] = '.';
+    buf[end-3] = '.';
+    buf[end-4] = '.';
+  }
+
+  return 0;
+}
+
+/* Open the file, read the whole thing in a line at a time,
+ * replacing the line beginning with the 4-digit hex 'id' with
+ * the line 'fix'.
+ * Because we don't know the max line length as we do when
+ * index files are guaranteed, we need to parse after we load.
+ */
+char *ntx_buffer(char *file)
+{
+  char *bbuf = NULL;
+  unsigned int blen = BUFFER_MAX, bpos = 0;
+  unsigned int len;
+  gzFile *f;
+
+  if(!(f = gzopen(file, "r"))) return NULL;
+  if(!(bbuf = malloc(blen))) return NULL;
+
+  /* Read the entire file into the buffer. */
+  while((len = gzread(f, bbuf + bpos, BUFFER_MAX))) {
+    bpos += len;
+    if((blen - bpos) < BUFFER_MAX) {
+      blen += BUFFER_MAX;
+      if(!(bbuf = realloc(bbuf, blen))) return NULL;
+    }
+  }
+  gzclose(f);
+  return bbuf;
+}
+
+int ntx_replace(char *file, char *id, char *fix)
+{
+  char *buf;
+  char *ptr, *end;
+  gzFile *f;
+
+  if(!(buf = ntx_buffer(file))) return -1;
+  if(!(f = gzopen(file, "w"))) return -1;
+
+  /* Parse the buffer contents to find the given position. */
+  for(ptr = buf; ptr; ptr = end+1) {
+    end = strchr(ptr, '\n');
+    if(strncmp(id, ptr, 4) == 0) {
+      if(fix) gzputs(f, fix);
+    } else {
+      if(end) gzwrite(f, ptr, end-ptr);
+      else gzputs(f, ptr);
+    }
+  }
+  gzclose(f);
+  free(buf);
+
+  return 0;
+}
+
+char *ntx_find(char *file, char *id)
+{
+  char *buf;
+  char *ptr, *end;
+
+  if(!(buf = ntx_buffer(file))) return NULL;
+
+  /* Parse the buffer contents to find the given position. */
+  for(ptr = buf; ptr; ptr = end+1) {
+    end = strchr(ptr, '\n');
+    if(strncmp(id, ptr, 4) == 0) {
+      *end = '\0';
+      ptr = strdup(ptr);
+      free(buf);
+      return ptr;
+    }
+  }
+  free(buf);
+
+  return NULL;
+}
+
 /* XXX: Keep us from creating more than 1024 notes. */
 int ntx_add(char **tags)
 {
   FILE *nout;
   gzFile *f;
-  char file[FILE_MAX], note[SUMMARY_WIDTH + PADDING_WIDTH], *temp;
+  char file[FILE_MAX], note[SUMMARY_WIDTH + PADDING_WIDTH];
   char *editor = getenv("EDITOR");
+  char **ptr;
   pid_t child;
   unsigned int hash;
 
@@ -54,43 +156,30 @@ int ntx_add(char **tags)
   if(child == 0) execlp(editor, editor, file, (char*)NULL);
   else waitpid(child, NULL, 0);
 
-  /* Ensure that it was written, or die. */
-  if(!(nout = fopen(file, "r"))) {
+  /* Get the summary line, and write it in abbreviated form to each index. */
+  if(ntx_summary(file, note+5) == -1) {
     puts("No new note was recorded.");
     return 0;
   }
-  fgets(note+5, SUMMARY_WIDTH+2, nout);
-  fclose(nout);
-
-  /* Get the summary line, and write it in abbreviated form to each index. */
-  /* Set a null at the maximum position to ensure we don't overdo it. */
-  temp = strchr(note+5, '\n');
-  if(temp) temp[1] = '\0';
-  else {
-    unsigned int end = strlen(note+5);
-
-    temp = note+5;
-    temp[end-1] = '\n';
-    temp[end-2] = '.';
-    temp[end-3] = '.';
-    temp[end-4] = '.';
-  }
 
   /* Fill in the identification information. */
-  note[0] = file[6];
-  note[1] = file[7];
-  note[2] = file[8];
-  note[3] = file[9];
+  strncpy(note, file+6, 4);
   note[4] = '\t';
 
-  for(; *tags != NULL; tags++) {
-    if(!snprintf(file, FILE_MAX, "tags/%s", *tags)) return -1;
+  for(ptr = tags; *ptr != NULL; ptr++) {
+    if(!snprintf(file, FILE_MAX, "tags/%s", *ptr)) return -1;
     f = gzopen(file, "a");
     gzputs(f, note);
     gzclose(f);
   }
 
-  /* XXX: Write the tags to the composite tags database. */
+  if(!snprintf(file, FILE_MAX, "tagged/%2s", file+6)) return -1;
+
+  /* XXX: Error checking. */
+  f = gzopen(file, "a");
+  gzwrite(f, note, 5);
+  for(ptr = tags; *ptr != NULL; ptr++) gzprintf(f, "%s;", *ptr);
+  gzclose(f);
 
   f = gzopen("index", "a");
   gzputs(f, note);
@@ -104,20 +193,38 @@ int ntx_add(char **tags)
 
 int ntx_edit(char *id)
 {
-  FILE *f;
-  char file[FILE_MAX];
+  char file[FILE_MAX], head[SUMMARY_WIDTH + PADDING_WIDTH];
+  char note[SUMMARY_WIDTH + PADDING_WIDTH];
   char *editor = getenv("EDITOR");
 
   if(!editor) die("ERROR - The environment variable EDITOR is unset.");
   if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
 
   /* Check that the note exists first. */
-  if(!(f = fopen(file, "r"))) die("ERROR - Invalid ID %s\n", id);
-  fclose(f);
-
+  if(ntx_summary(file, head+5) == -1) die("ERROR - Invalid ID %s\n", id);
   execlp(editor, editor, file, (char*)NULL);
 
-  /* XXX: Re-read file, compare headers, and rewrite if necessary. */
+  /* See if the header has changed; If so, rewrite the headers. */
+  if(ntx_summary(file, note+5) == -1) die("ERROR - Unable to read %s\n", id);
+  if(strcmp(head+5, note+5)) {
+    char *tags, *cur, *ptr;
+
+    /* Fill in the identification information. */
+    strncpy(note, id, 4);
+    note[4] = '\t';
+
+    if(!snprintf(file, FILE_MAX, "tagged/%2s", id)) return -1;
+    tags = ntx_find(file, id);
+
+    cur = tags + 5; /* Skip the ID, plus the tab. */
+    while((ptr = strchr(cur, ';'))) {
+      *ptr = '\0';
+      /* Update the tags - O(n) search through the affected indices. */
+      if(!snprintf(file, FILE_MAX, "tags/%s", cur)) return -1;
+      if(!ntx_replace(file, id, note)) return -1;
+      cur = ptr + 1;
+    }
+  }
 
   return 0;
 }
@@ -179,8 +286,7 @@ int ntx_list(char **tags, unsigned int tagc)
   } else if(tagc == 1) { /* No need to calculate the intersection. */
     char name[FILE_MAX];
 
-    strcpy(name, "tags/");
-    strncat(name, tags[0], FILE_MAX - strlen(name));
+    if(!snprintf(name, FILE_MAX, "tags/%s", *tags)) return -1;
 
     f = gzopen(name, "r");
     if(!f) die("ERROR - No such tag: %s\n", tags[0]);
@@ -272,91 +378,11 @@ int ntx_put(char *id)
   return 0;
 }
 
-/* Open the file, read the whole thing in a line at a time,
- * replacing the line beginning with the 4-digit hex 'id' with
- * the line 'fix'.
- * Because we don't know the max line length as we do when
- * index files are guaranteed, we need to parse after we load.
- */
-char *ntx_buffer(char *file)
-{
-  char *bbuf = NULL;
-  unsigned int blen = BUFFER_MAX, bpos = 0;
-  unsigned int len;
-  gzFile *f;
-
-  if(!(f = gzopen(file, "r"))) return NULL;
-  if(!(bbuf = malloc(blen))) return NULL;
-
-  /* Read the entire file into the buffer. */
-  while((len = gzread(f, bbuf + bpos, BUFFER_MAX))) {
-    bpos += len;
-    if((blen - bpos) < BUFFER_MAX) {
-      blen += BUFFER_MAX;
-      if(!(bbuf = realloc(bbuf, blen))) return NULL;
-    }
-  }
-  gzclose(f);
-  return bbuf;
-}
-
-int ntx_replace(char *file, char *id, char *fix)
-{
-  char *buf;
-  char *ptr, *end;
-  gzFile *f;
-
-  if(!(buf = ntx_buffer(file))) return -1;
-  if(!(f = gzopen(file, "w"))) return -1;
-
-  /* Parse the buffer contents to find the given position. */
-  for(ptr = buf; ptr; ptr = end+1) {
-    end = strchr(ptr, '\n');
-    if(strncmp(id, ptr, 4) == 0) {
-      if(fix) gzputs(f, fix);
-    } else {
-      if(end) gzwrite(f, ptr, end-ptr);
-      else gzputs(f, ptr);
-    }
-  }
-  gzclose(f);
-  free(buf);
-
-  return 0;
-}
-
-char *ntx_find(char *file, char *id)
-{
-  char *buf;
-  char *ptr, *end;
-
-  if(!(buf = ntx_buffer(file))) return NULL;
-
-  /* Parse the buffer contents to find the given position. */
-  for(ptr = buf; ptr; ptr = end+1) {
-    end = strchr(ptr, '\n');
-    if(strncmp(id, ptr, 4) == 0) {
-      *end = '\0';
-      ptr = strdup(ptr);
-      free(buf);
-      return ptr;
-    }
-  }
-  free(buf);
-
-  return NULL;
-}
-
 int ntx_del(char *id)
 {
   char file[FILE_MAX], *buf, *ptr, *cur;
-  unsigned int len;
 
-  if(!strcpy(file, "tagged/")) return -1;
-  len = strlen(file);
-  file[len]   = id[0];
-  file[len+1] = id[1];
-  file[len+2] = '\0';
+  if(!snprintf(file, FILE_MAX, "tagged/%2s", id)) return -1;
 
   /* Find the line describing the tags of the given ID. */
   buf = ntx_find(file, id);
@@ -365,9 +391,7 @@ int ntx_del(char *id)
   while((ptr = strchr(cur, ';'))) {
     *ptr = '\0';
     /* Delete the tags - O(n) search through the affected indices. */
-    /* XXX: Error checking. */
-    if(!strcpy(file, "tags/")) return -1;
-    if(!strncat(file, cur, FILE_MAX-strlen(file))) return -1;
+    if(!snprintf(file, FILE_MAX, "tags/%s", cur)) return -1;
     if(!ntx_replace(file, id, NULL)) return -1;
     cur = ptr + 1;
   }
@@ -376,16 +400,11 @@ int ntx_del(char *id)
   if(!ntx_replace("index", id, NULL)) return -1;
 
   /* Remove the backreference. */
-  if(!strcpy(file, "tagged/")) return -1;
-  len = strlen(file);
-  file[len]   = id[0];
-  file[len+1] = id[1];
-  file[len+2] = '\0';
+  if(!snprintf(file, FILE_MAX, "tagged/%2s", id)) return -1;
   if(!ntx_replace(file, id, NULL)) return -1;
 
   /* Remove the note itself from notes/ */
-  if(!strcpy(file, "tagged/")) return -1;
-  if(!strncat(file, id, FILE_MAX-strlen(file))) return -1;
+  if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
   if(unlink(file) != 0) return -1;
 
   free(buf);
