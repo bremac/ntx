@@ -2,19 +2,23 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <zlib.h>
 #include "hash_table.h"
 
+/* Buffer size definitions. */
 #define FILE_MAX      1024
 #define BUFFER_MAX    8192
 #define SUMMARY_WIDTH 58
 #define PADDING_WIDTH 7
 
+
+/* Utility/Refactored functions. */
 void die(char *fmt, ...)
 {
   va_list args;
@@ -126,21 +130,30 @@ char *ntx_find(char *file, char *id)
   return NULL;
 }
 
+void ntx_editor(char *file)
+{
+  char *editor = getenv("EDITOR");
+  pid_t child;
+
+  if(!editor) die("ERROR - The environment variable EDITOR is unset.");
+
+  if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
+  else waitpid(child, NULL, 0);
+}
+
+
+/* Front-end functions, user interaction. */
 /* XXX: Keep us from creating more than 1024 notes. */
 int ntx_add(char **tags)
 {
   FILE *nout;
   gzFile *f;
   char file[FILE_MAX], note[SUMMARY_WIDTH + PADDING_WIDTH];
-  char *editor = getenv("EDITOR");
   char **ptr;
-  pid_t child;
   unsigned int hash;
 
   srand(time(NULL));
   hash = rand() & 0xffff;
-
-  if(!editor) die("ERROR - The environment variable EDITOR is unset.");
 
   while(1) {
     if(!snprintf(file, FILE_MAX, "notes/%04x", hash))
@@ -150,11 +163,8 @@ int ntx_add(char **tags)
     hash = (hash + 1) & 0xffff;
   }
 
-  /* Fire up EDITOR to create the note. */
-  child = fork();
-
-  if(child == 0) execlp(editor, editor, file, (char*)NULL);
-  else waitpid(child, NULL, 0);
+  /* Fire up the editor to create the note. */
+  ntx_editor(file);
 
   /* Get the summary line, and write it in abbreviated form to each index. */
   if(ntx_summary(file, note+5) == -1) {
@@ -195,14 +205,12 @@ int ntx_edit(char *id)
 {
   char file[FILE_MAX], head[SUMMARY_WIDTH + PADDING_WIDTH];
   char note[SUMMARY_WIDTH + PADDING_WIDTH];
-  char *editor = getenv("EDITOR");
 
-  if(!editor) die("ERROR - The environment variable EDITOR is unset.");
   if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
 
   /* Check that the note exists first. */
   if(ntx_summary(file, head+5) == -1) die("ERROR - Invalid ID %s\n", id);
-  execlp(editor, editor, file, (char*)NULL);
+  ntx_editor(file);
 
   /* See if the header has changed; If so, rewrite the headers. */
   if(ntx_summary(file, note+5) == -1) die("ERROR - Unable to read %s\n", id);
@@ -411,6 +419,21 @@ int ntx_del(char *id)
   return 0;
 }
 
+int ntx_tags()
+{
+  DIR *dir = opendir("tags");
+  struct dirent *cur;
+
+  if(!dir) return -1;
+
+  puts("Tags:");
+  while((cur = readdir(dir))) puts(cur->d_name);
+  fputc('\n', stdout);
+
+  closedir(dir);
+  return 0;
+}
+
 void ntx_usage(int retcode)
 {
   puts("Usage:\tntx [mode] [arguments] ..\n");
@@ -418,7 +441,8 @@ void ntx_usage(int retcode)
   puts("\t-e [hex]\t\tEdit the note identified by the ID hex.");
   puts("\t-p [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
   puts("\t-l <tags>\t\tList the notes in the intersection of tags.");
-  puts("\t-d [hex]\t\tDelete the node identified by the ID hex.\n");
+  puts("\t-d [hex]\t\tDelete the node identified by the ID hex.");
+  puts("\t-t\t\tPrint a list of the tags in the database.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
 
   puts("Input file format:");
@@ -465,6 +489,8 @@ int main(int argc, char **argv)
   } else if(argv[1][1] == 'l' && argc >= 2) {
     if(ntx_list(argv+2, argc - 2) != 0)
       die("ERROR - Unknown execution failure.\n");
+  } else if(argv[1][1] == 't') {
+    if(ntx_tags() != 0) die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'p' && argc == 3) {
     if(ntx_put(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'd' && argc == 3) {
