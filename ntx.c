@@ -17,6 +17,13 @@
 #define SUMMARY_WIDTH 58
 #define PADDING_WIDTH 7
 
+/* Builtin Subdirectories. */
+#define NTX_DIR       ".ntx"
+#define TAGS_DIR      "tags"
+#define REFS_DIR      "refs"
+#define NOTES_DIR     "notes"
+#define INDEX_FILE    "index"
+
 
 /* Utility/Refactored functions. */
 void die(char *fmt, ...)
@@ -46,10 +53,10 @@ int ntx_summary(char *file, char *buf)
   else {
     unsigned int end = strlen(buf);
 
-    buf[end-1] = '\n';
-    buf[end-2] = '.';
-    buf[end-3] = '.';
     buf[end-4] = '.';
+    buf[end-3] = '.';
+    buf[end-2] = '.';
+    buf[end-1] = '\n';
   }
 
   return 0;
@@ -156,8 +163,7 @@ int ntx_add(char **tags)
   hash = rand() & 0xffff;
 
   while(1) {
-    if(!snprintf(file, FILE_MAX, "notes/%04x", hash))
-       return -1;
+    if(!snprintf(file, FILE_MAX, NOTES_DIR"/%04x", hash)) return -1;
     if(!(nout = fopen(file, "r"))) break;
     fclose(nout);
     hash = (hash + 1) & 0xffff;
@@ -177,13 +183,13 @@ int ntx_add(char **tags)
   note[4] = '\t';
 
   for(ptr = tags; *ptr != NULL; ptr++) {
-    if(!snprintf(file, FILE_MAX, "tags/%s", *ptr)) return -1;
+    if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *ptr)) return -1;
     f = gzopen(file, "a");
     gzputs(f, note);
     gzclose(f);
   }
 
-  if(!snprintf(file, FILE_MAX, "tagged/%2s", file+6)) return -1;
+  if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", file+6)) return -1;
 
   /* XXX: Error checking. */
   f = gzopen(file, "a");
@@ -191,7 +197,7 @@ int ntx_add(char **tags)
   for(ptr = tags; *ptr != NULL; ptr++) gzprintf(f, "%s;", *ptr);
   gzclose(f);
 
-  f = gzopen("index", "a");
+  f = gzopen(INDEX_FILE, "a");
   gzputs(f, note);
   gzclose(f);
 
@@ -206,7 +212,7 @@ int ntx_edit(char *id)
   char file[FILE_MAX], head[SUMMARY_WIDTH + PADDING_WIDTH];
   char note[SUMMARY_WIDTH + PADDING_WIDTH];
 
-  if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
+  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
 
   /* Check that the note exists first. */
   if(ntx_summary(file, head+5) == -1) die("ERROR - Invalid ID %s\n", id);
@@ -221,14 +227,14 @@ int ntx_edit(char *id)
     strncpy(note, id, 4);
     note[4] = '\t';
 
-    if(!snprintf(file, FILE_MAX, "tagged/%2s", id)) return -1;
+    if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", id)) return -1;
     tags = ntx_find(file, id);
 
     cur = tags + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) {
       *ptr = '\0';
       /* Update the tags - O(n) search through the affected indices. */
-      if(!snprintf(file, FILE_MAX, "tags/%s", cur)) return -1;
+      if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", cur)) return -1;
       if(!ntx_replace(file, id, note)) return -1;
       cur = ptr + 1;
     }
@@ -248,6 +254,7 @@ int ntx_sortstat(const void *a, const void *b)
   return ((struct fstats*)a)->size - ((struct fstats*)b)->size;
 }
 
+/* Helper functions for calculating multi-tag intersection. */
 unsigned long hash_line(void *v)
 {
   /* Just hash the 4-char prefix. */
@@ -286,7 +293,7 @@ int ntx_list(char **tags, unsigned int tagc)
   if(tagc > 127) die("ERROR - Too many (more than 127) tags.");
 
   if(tagc == 0) { /* No tags specified, open the index. */
-    f = gzopen("index", "r");
+    f = gzopen(INDEX_FILE, "r");
     if(!f) return 0;
 
     /* Duplicate each line from the index to STDOUT. */
@@ -294,7 +301,7 @@ int ntx_list(char **tags, unsigned int tagc)
   } else if(tagc == 1) { /* No need to calculate the intersection. */
     char name[FILE_MAX];
 
-    if(!snprintf(name, FILE_MAX, "tags/%s", *tags)) return -1;
+    if(!snprintf(name, FILE_MAX, TAGS_DIR"/%s", *tags)) return -1;
 
     f = gzopen(name, "r");
     if(!f) die("ERROR - No such tag: %s\n", tags[0]);
@@ -306,14 +313,14 @@ int ntx_list(char **tags, unsigned int tagc)
     hash_t *table;
     struct stat temp;
     struct fstats *files = malloc(sizeof(struct fstats) * tagc);
-    unsigned int i, exists;
+    unsigned int i, len, exists;
 
     /* Sort the files; We'll likely be best starting with the smallest. */
     /* Stat and load the files into the buffers for sorting. */
     for(i = 0; i < tagc; i++) {
-      name = malloc(6 + strlen(tags[i]));
-      strcpy(name, "tags/");
-      strcat(name, tags[i]);
+      len = 6 + strlen(tags[i]);
+      name = malloc(len);
+      if(!snprintf(name, len, TAGS_DIR"/%s", tags[i])) return -1;
       if(stat(name, &temp) != 0) die("ERROR - No such tag: %s\n", tags[i]);
 
       files[i].path = name;
@@ -378,7 +385,7 @@ int ntx_put(char *id)
   char file[FILE_MAX];
   char buffer[BUFFER_MAX];
 
-  if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
+  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
   if(!(f = fopen(file, "r"))) die("ERROR - Invalid ID %s\n", id);
 
   /* Duplicate each line from the note to STDOUT. */
@@ -390,7 +397,7 @@ int ntx_del(char *id)
 {
   char file[FILE_MAX], *buf, *ptr, *cur;
 
-  if(!snprintf(file, FILE_MAX, "tagged/%2s", id)) return -1;
+  if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", id)) return -1;
 
   /* Find the line describing the tags of the given ID. */
   buf = ntx_find(file, id);
@@ -399,38 +406,49 @@ int ntx_del(char *id)
   while((ptr = strchr(cur, ';'))) {
     *ptr = '\0';
     /* Delete the tags - O(n) search through the affected indices. */
-    if(!snprintf(file, FILE_MAX, "tags/%s", cur)) return -1;
+    if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", cur)) return -1;
     if(!ntx_replace(file, id, NULL)) return -1;
     cur = ptr + 1;
   }
 
   /* Remove it from the index. */
-  if(!ntx_replace("index", id, NULL)) return -1;
+  if(!ntx_replace(INDEX_FILE, id, NULL)) return -1;
 
   /* Remove the backreference. */
-  if(!snprintf(file, FILE_MAX, "tagged/%2s", id)) return -1;
+  if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", id)) return -1;
   if(!ntx_replace(file, id, NULL)) return -1;
 
   /* Remove the note itself from notes/ */
-  if(!snprintf(file, FILE_MAX, "notes/%s", id)) return -1;
+  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
   if(unlink(file) != 0) return -1;
 
   free(buf);
   return 0;
 }
 
-int ntx_tags()
+/* XXX:
+ *      * No arguments:  List all tags.
+ *      * One argument:  List tags belonging to said note.
+ *      * Multiple args: Re-tag the note (first argument) with 'tags'.
+ */
+int ntx_tags(char **tags, unsigned int tagc)
 {
-  DIR *dir = opendir("tags");
-  struct dirent *cur;
+  if(tagc == 0) { /* List all tags in the database. */
+    DIR *dir = opendir(TAGS_DIR);
+    struct dirent *cur;
 
-  if(!dir) return -1;
+    if(!dir) return -1;
 
-  puts("Tags:");
-  while((cur = readdir(dir))) puts(cur->d_name);
-  fputc('\n', stdout);
+    while((cur = readdir(dir))) if(cur->d_name[0] != '.') puts(cur->d_name);
+    fputc('\n', stdout);
 
-  closedir(dir);
+    closedir(dir);
+  } else if(tagc == 1) { /* List all tags of a note. */
+
+  } else { /* Re-tag a note. */
+
+  }
+
   return 0;
 }
 
@@ -472,14 +490,15 @@ int main(int argc, char **argv)
   if(strlen(argv[1]) != 2 || argv[1][0] != '-') ntx_usage(EXIT_FAILURE);
 
   /* Ensure our target directory exists. */
-  if(!snprintf(file, FILE_MAX, "%s/.ntx", getenv("HOME")))
+  if(!snprintf(file, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
     die("ERROR - Unknown execution failure.\n");
 
   if(chdir(file) == -1) {
     mkdir(file, S_IRWXU);
     if(chdir(file) == -1) die("ERROR - Unknown execution failure.\n");
-    mkdir("tags", S_IRWXU);
-    mkdir("notes", S_IRWXU);
+    mkdir(TAGS_DIR, S_IRWXU);
+    mkdir(REFS_DIR, S_IRWXU);
+    mkdir(NOTES_DIR, S_IRWXU);
   }
 
   if(argv[1][1] == 'a' && argc >= 3) {
@@ -490,7 +509,8 @@ int main(int argc, char **argv)
     if(ntx_list(argv+2, argc - 2) != 0)
       die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 't') {
-    if(ntx_tags() != 0) die("ERROR - Unknown execution failure.\n");
+    if(ntx_tags(argv+2, argc - 2) != 0)
+      die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'p' && argc == 3) {
     if(ntx_put(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
   } else if(argv[1][1] == 'd' && argc == 3) {
