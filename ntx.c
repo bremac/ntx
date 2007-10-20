@@ -238,7 +238,11 @@ int ntx_edit(char *id)
       if(!ntx_replace(file, id, note)) return -1;
       cur = ptr + 1;
     }
+    free(tags);
   }
+
+  /* Dump the summary to STDOUT as confirmation that everything went well. */
+  fputs(note, stdout);
 
   return 0;
 }
@@ -427,13 +431,11 @@ int ntx_del(char *id)
 }
 
 /* XXX:
- *      * No arguments:  List all tags.
- *      * One argument:  List tags belonging to said note.
  *      * Multiple args: Re-tag the note (first argument) with 'tags'.
  */
-int ntx_tags(char **tags, unsigned int tagc)
+int ntx_tags(char **argv, unsigned int argc)
 {
-  if(tagc == 0) { /* List all tags in the database. */
+  if(argc == 0) { /* List all tags in the database. */
     DIR *dir = opendir(TAGS_DIR);
     struct dirent *cur;
 
@@ -443,8 +445,20 @@ int ntx_tags(char **tags, unsigned int tagc)
     fputc('\n', stdout);
 
     closedir(dir);
-  } else if(tagc == 1) { /* List all tags of a note. */
+  } else if(argc == 1) { /* List all tags of a note. */
+    char file[FILE_MAX], *buf, *cur;
 
+    if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", id)) return -1;
+    buf = ntx_find(file, *argv);
+
+    cur = buf + 5; /* Skip the ID, plus the tab. */
+    while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
+      *ptr = '\0';
+      puts(cur);
+      cur = ptr + 1;
+    }
+
+    free(buf);
   } else { /* Re-tag a note. */
 
   }
