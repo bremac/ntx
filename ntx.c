@@ -90,6 +90,27 @@ char *ntx_buffer(char *file)
   return bbuf;
 }
 
+char *ntx_tagstolist(char **tags)
+{
+  char *list, *pos, **cur;
+  unsigned int len = 7; /* ID + tab + newline + NULL. */
+
+  /* Precompute the length of the tags. */
+  for(cur = tags; *cur; cur++) len += strlen(*cur) + 1;
+  list = malloc(len);
+  pos = list + 5;
+
+  for(cur = tags; *cur; cur++) {
+    strcpy(pos, *cur);
+    len = strlen(*cur);
+    pos[len] = ';';
+    pos += len + 1;
+  }
+
+  strcpy(pos, "\n");
+  return list;
+}
+
 int ntx_replace(char *file, char *id, char *fix)
 {
   char *buf;
@@ -191,6 +212,7 @@ int ntx_add(char **tags)
 
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", file+6)) return -1;
 
+  /* Append the tags to the definition file. */
   /* XXX: Error checking. */
   f = gzopen(file, "a");
   gzwrite(f, note, 5);
@@ -334,7 +356,6 @@ int ntx_list(char **tags, unsigned int tagc)
     qsort(files, tagc, sizeof(struct fstats), ntx_sortstat);
 
     /* Now, load the first, and check it with each hash. */
-
     f = gzopen(files[0].path, "r");
     table = hasht_init(120, free, hash_line, hash_val, cmp_line, cmp_val);
 
@@ -446,10 +467,10 @@ int ntx_tags(char **argv, unsigned int argc)
 
     closedir(dir);
   } else if(argc == 1) { /* List all tags of a note. */
-    char file[FILE_MAX], *buf, *cur;
+    char file[FILE_MAX], *buf, *ptr, *cur;
 
-    if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", id)) return -1;
-    buf = ntx_find(file, *argv);
+    if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", *argv)) return -1;
+    if(!(buf = ntx_find(file, *argv))) die("ERROR - No such note %s\n", *argv);
 
     cur = buf + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
@@ -460,7 +481,57 @@ int ntx_tags(char **argv, unsigned int argc)
 
     free(buf);
   } else { /* Re-tag a note. */
+    char file[FILE_MAX], desc[SUMMARY_WIDTH + 2];
+    char *tmp, *orig, **cur;
 
+    /* Get the summary in case we need to write it. */
+    if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", *argv)) return -1;
+    if(ntx_summary(file, desc+5) == -1) die("ERROR - No such note %s\n", *argv);
+
+    /* Fill in the identification information. */
+    strncpy(desc, *argv, 4);
+    desc[4] = '\t';
+
+    /* Read in the original listing of tags for this file. */
+    if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", *argv)) return -1;
+    if(!(orig = ntx_find(file, *argv))) die("ERROR - No such note %s\n", *argv);
+
+    /* Add any tags which don't yet exist. */
+    for(cur = argv+1; *cur; cur++) {
+      if(!strstr(orig, *cur)) { /* Add the tag to the file. */
+        gzFile *f;
+
+        if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur)) return -1;
+        if(!(f = gzopen(file, "a"))) return -1;
+        
+        gzputs(f, desc);
+        gzclose(f);
+      }
+    }
+    
+    /* NULL-terminate the tags in the backreferences. */
+    for(tmp = orig; (tmp = strchr(tmp, ';')); tmp++) *tmp = '\0';
+
+    /* Remove any tags which don't exist any more. */
+    for(tmp = orig; tmp; tmp += strlen(tmp) + 1) {
+      for(cur = argv+1; *cur; cur++)
+        if(strcmp(*cur, tmp) == 0) break;
+
+      if(!*cur) { /* Remove any tags we didn't find. */
+        if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp)) return -1;
+        if(!ntx_replace(file, *argv, NULL)) return -1;
+      }
+    }
+
+    /* Update the backreference with the new set of tags. */
+    tmp = ntx_tagstolist(argv+1);
+    if(!snprintf(file, FILE_MAX, REFS_DIR"/%2s", *argv)) return -1;
+    if(!ntx_replace(file, *argv, tmp)) {
+      free(tmp);
+      return -1;
+    }
+
+    free(tmp);
   }
 
   return 0;
