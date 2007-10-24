@@ -542,12 +542,12 @@ int ntx_tags(char **argv, unsigned int argc)
 void ntx_usage(int retcode)
 {
   puts("Usage:\tntx [mode] [arguments] ..\n");
-  puts("Modes:\t-a [tags]\t\tAdd a note from STDIN to tags.");
-  puts("\t-e [hex]\t\tEdit the note identified by the ID hex.");
-  puts("\t-p [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
-  puts("\t-l <tags>\t\tList the notes in the intersection of tags.");
-  puts("\t-d [hex]\t\tDelete the node identified by the ID hex.");
-  puts("\t-t\t\tPrint a list of the tags in the database.\n");
+  puts("Modes:\tadd [tags]\t\tAdd a note from STDIN to tags.");
+  puts("\tedit [hex]\t\tEdit the note identified by the ID hex.");
+  puts("\tput [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
+  puts("\tlist <tags>\t\tList the notes in the intersection of tags.");
+  puts("\trm [hex]\t\tDelete the node identified by the ID hex.");
+  puts("\ttag <hex <tags ..>>\tPrint a list of the tags in the database.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
 
   puts("Input file format:");
@@ -555,8 +555,8 @@ void ntx_usage(int retcode)
   puts("\tthe note in question. No further assumptions are made about the");
   puts("\ttype, format, or size of the file.\n");
 
-  puts("Notes on the output of 'ntx -l':");
-  puts("\t'ntx -l' outputs a four-byte hexidecimal ID, followed by a tab,");
+  puts("Notes on the output of 'ntx list':");
+  puts("\t'ntx list' outputs a four-byte hexidecimal ID, followed by a tab,");
   printf("\tand then a brief summary comprised of the first %d bytes of the\n", SUMMARY_WIDTH);
   puts("\tfirst line of the saved note. This is currently not updated when");
   puts("\ta note changes.\n");
@@ -574,12 +574,13 @@ int main(int argc, char **argv)
   if(strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
     ntx_usage(EXIT_SUCCESS);
 
-  if(strlen(argv[1]) != 2 || argv[1][0] != '-') ntx_usage(EXIT_FAILURE);
+  if(argc < 2) ntx_usage(EXIT_FAILURE);
 
-  /* Ensure our target directory exists. */
+  /* Change to the notes database directory. */
   if(!snprintf(file, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
     die("ERROR - Unknown execution failure.\n");
 
+  /* Ensure our target directory exists. */
   if(chdir(file) == -1) {
     mkdir(file, S_IRWXU);
     if(chdir(file) == -1) die("ERROR - Unknown execution failure.\n");
@@ -588,19 +589,19 @@ int main(int argc, char **argv)
     mkdir(NOTES_DIR, S_IRWXU);
   }
 
-  if(argv[1][1] == 'a' && argc >= 3) {
+  if(!strcmp(argv[1], "add") && argc >= 3) {
     if(ntx_add(argv+2) != 0) die("ERROR - Unknown execution failure.\n");
-  } else if(argv[1][1] == 'e' && argc == 3) {
+  } else if(!strcmp(argv[1], "edit") && argc == 3) {
     if(ntx_edit(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
-  } else if(argv[1][1] == 'l' && argc >= 2) {
+  } else if(!strcmp(argv[1], "list") && argc >= 2) {
     if(ntx_list(argv+2, argc - 2) != 0)
       die("ERROR - Unknown execution failure.\n");
-  } else if(argv[1][1] == 't') {
+  } else if(!strcmp(argv[1], "tag")) {
     if(ntx_tags(argv+2, argc - 2) != 0)
       die("ERROR - Unknown execution failure.\n");
-  } else if(argv[1][1] == 'p' && argc == 3) {
+  } else if(!strcmp(argv[1], "put") && argc == 3) {
     if(ntx_put(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
-  } else if(argv[1][1] == 'd' && argc == 3) {
+  } else if(!strcmp(argv[1], "rm") && argc == 3) {
     printf("ERROR - Feature not yet implemented.\n");
   } else ntx_usage(EXIT_FAILURE);
 
