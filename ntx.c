@@ -600,7 +600,7 @@ int main(int argc, char **argv)
   } else if(!strcmp(argv[1], "put") && argc == 3) {
     if(ntx_put(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "rm") && argc == 3) {
-    printf("ERROR - Feature not yet implemented.\n");
+    if(ntx_del(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
   } else ntx_usage(EXIT_FAILURE);
 
   return EXIT_SUCCESS;
