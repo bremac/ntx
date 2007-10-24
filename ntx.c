@@ -542,12 +542,12 @@ int ntx_tags(char **argv, unsigned int argc)
 void ntx_usage(int retcode)
 {
   puts("Usage:\tntx [mode] [arguments] ..\n");
-  puts("Modes:\tadd [tags]\t\tAdd a note from STDIN to tags.");
+  puts("Modes:\tadd  [tags]\t\tAdd a note from STDIN to tags.");
   puts("\tedit [hex]\t\tEdit the note identified by the ID hex.");
-  puts("\tput [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
+  puts("\tput  [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
   puts("\tlist <tags>\t\tList the notes in the intersection of tags.");
-  puts("\trm [hex]\t\tDelete the node identified by the ID hex.");
-  puts("\ttag <hex <tags ..>>\tPrint a list of the tags in the database.\n");
+  puts("\trm   [hex]\t\tDelete the node identified by the ID hex.");
+  puts("\ttag  <hex <tags ..>>\tPrint a list of the tags in the database.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
 
   puts("Input file format:");
@@ -571,10 +571,8 @@ int main(int argc, char **argv)
   /* Very few arguments, so we use a hand-written parser. */
   if(argc < 2) ntx_usage(EXIT_FAILURE);
 
-  if(strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
+  if(!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))
     ntx_usage(EXIT_SUCCESS);
-
-  if(argc < 2) ntx_usage(EXIT_FAILURE);
 
   /* Change to the notes database directory. */
   if(!snprintf(file, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
