@@ -126,7 +126,7 @@ int ntx_replace(char *file, char *id, char *fix)
   if(!(f = gzopen(file, "w"))) return -2;
 
   /* Parse the buffer contents to find the given position. */
-  for(ptr = buf; ptr; ptr = end+1) {
+  for(ptr = buf; *ptr; ptr = end+1) {
     end = strchr(ptr, '\n');
     if(strncmp(id, ptr, 4) == 0) {
       if(fix) gzputs(f, fix);
@@ -134,6 +134,7 @@ int ntx_replace(char *file, char *id, char *fix)
       if(end) gzwrite(f, ptr, end-ptr);
       else gzputs(f, ptr);
     }
+    if(!end) break;
   }
   gzclose(f);
   free(buf);
@@ -149,7 +150,7 @@ char *ntx_find(char *file, char *id)
   if(!(buf = ntx_buffer(file))) return NULL;
 
   /* Parse the buffer contents to find the given position. */
-  for(ptr = buf; ptr; ptr = end+1) {
+  for(ptr = buf; *ptr; ptr = end + 1) {
     end = strchr(ptr, '\n');
     if(strncmp(id, ptr, 4) == 0) {
       *end = '\0';
@@ -157,6 +158,7 @@ char *ntx_find(char *file, char *id)
       free(buf);
       return ptr;
     }
+    if(!end) break; /* This isn't normal, and shouldn't occur. */
   }
   free(buf);
 
@@ -491,7 +493,7 @@ int ntx_tags(char **argv, unsigned int argc)
     free(buf);
   } else { /* Re-tag a note. */
     char file[FILE_MAX], desc[SUMMARY_WIDTH + 2];
-    char *tmp, *orig, **cur;
+    char *tmp, *next, *orig, **cur;
 
     /* Get the summary in case we need to write it. */
     if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", *argv)) return -1;
@@ -512,12 +514,10 @@ int ntx_tags(char **argv, unsigned int argc)
         if(!ntx_append(file, desc)) return -1;
       }
     }
-    
-    /* NULL-terminate the tags in the backreferences. */
-    for(tmp = orig; (tmp = strchr(tmp, ';')); tmp++) *tmp = '\0';
-
+   
     /* Remove any tags which don't exist any more. */
-    for(tmp = orig; tmp; tmp += strlen(tmp) + 1) {
+    for(tmp = orig+5; (next = strchr(tmp, ';')); tmp = next + 1) {
+      *next = '\0';
       for(cur = argv+1; *cur; cur++)
         if(strcmp(*cur, tmp) == 0) break;
 
