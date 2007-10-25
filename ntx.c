@@ -81,11 +81,12 @@ char *ntx_buffer(char *file)
   /* Read the entire file into the buffer. */
   while((len = gzread(f, bbuf + bpos, BUFFER_MAX))) {
     bpos += len;
-    if((blen - bpos) < BUFFER_MAX) {
+    if((blen - bpos - 1) < BUFFER_MAX) { /* The extra space is for the \0. */
       blen += BUFFER_MAX;
       if(!(bbuf = realloc(bbuf, blen))) return NULL;
     }
   }
+  bbuf[bpos] = '\0'; /* NULL-terminate the input. */
   gzclose(f);
   return bbuf;
 }
@@ -120,6 +121,7 @@ int ntx_replace(char *file, char *id, char *fix)
 {
   char *buf;
   char *ptr, *end;
+  unsigned int written;
   gzFile *f;
 
   if(!(buf = ntx_buffer(file))) return -1;
@@ -136,8 +138,11 @@ int ntx_replace(char *file, char *id, char *fix)
     }
     if(!end) break;
   }
+  written = gztell(f);
   gzclose(f);
   free(buf);
+
+  if(written == 0) unlink(file); /* Remove the file if it is empty. */
 
   return 1;
 }
