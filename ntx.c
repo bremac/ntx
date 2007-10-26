@@ -185,7 +185,7 @@ void ntx_editor(char *file)
   char *editor = getenv("EDITOR");
   pid_t child;
 
-  if(!editor) die("ERROR - The environment variable EDITOR is unset.");
+  if(!editor) die("The environment variable EDITOR is unset.");
 
   if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
   else waitpid(child, NULL, 0);
@@ -255,11 +255,12 @@ int ntx_edit(char *id)
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
 
   /* Check that the note exists first. */
-  if(ntx_summary(file, head+5) < 1) die("ERROR - Invalid ID %s\n", id);
+  if(ntx_summary(file, head+5) < 1) die("No such note: %s\n", id);
   ntx_editor(file);
 
   /* See if the header has changed; If so, rewrite the headers. */
-  if(ntx_summary(file, note+5) < 1) die("ERROR - Unable to read %s\n", id);
+  /* XXX: If we can't reread the file, do we need to take action? */
+  if(ntx_summary(file, note+5) < 1) die("Unable to read %s\n", id);
   if(strcmp(head+5, note+5)) {
     char *tags, *cur, *ptr;
 
@@ -337,7 +338,7 @@ int ntx_list(char **tags, unsigned int tagc)
   gzFile *f;
 
   /* Too many tags for proper ref-counting, or even sane evaluation. */
-  if(tagc > 127) die("ERROR - Too many (more than 127) tags.");
+  if(tagc > 127) die("Too many (more than 127) tags.");
 
   if(tagc == 0) { /* No tags specified, open the index. */
     f = gzopen(INDEX_FILE, "r");
@@ -351,7 +352,7 @@ int ntx_list(char **tags, unsigned int tagc)
     if(!snprintf(name, FILE_MAX, TAGS_DIR"/%s", *tags)) return -1;
 
     f = gzopen(name, "r");
-    if(!f) die("ERROR - No such tag: %s\n", tags[0]);
+    if(!f) die("No such tag: %s\n", tags[0]);
 
     /* Duplicate each line from the index to STDOUT. */
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
@@ -368,7 +369,7 @@ int ntx_list(char **tags, unsigned int tagc)
       len = 6 + strlen(tags[i]);
       name = malloc(len);
       if(!snprintf(name, len, TAGS_DIR"/%s", tags[i])) return -1;
-      if(stat(name, &temp) != 0) die("ERROR - No such tag: %s\n", tags[i]);
+      if(stat(name, &temp) != 0) die("No such tag: %s\n", tags[i]);
 
       files[i].path = name;
       files[i].size = temp.st_size;
@@ -430,7 +431,7 @@ int ntx_put(char *id)
   char buffer[BUFFER_MAX];
 
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(!(f = fopen(file, "r"))) die("ERROR - Invalid ID %s\n", id);
+  if(!(f = fopen(file, "r"))) die("No such note: %s\n", id);
 
   /* Duplicate each line from the note to STDOUT. */
   while(fgets(buffer, BUFFER_MAX, f)) fputs(buffer, stdout);
@@ -485,7 +486,7 @@ int ntx_tags(char **argv, unsigned int argc)
     char file[FILE_MAX], *buf, *ptr, *cur;
 
     if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", *argv)) return -1;
-    if(!(buf = ntx_find(file, *argv))) die("ERROR - No such note %s\n", *argv);
+    if(!(buf = ntx_find(file, *argv))) die("No such note: %s\n", *argv);
 
     cur = buf + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
@@ -501,7 +502,7 @@ int ntx_tags(char **argv, unsigned int argc)
 
     /* Get the summary in case we need to write it. */
     if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", *argv)) return -1;
-    if(ntx_summary(file, desc+5) < 1) die("ERROR - No such note %s\n", *argv);
+    if(ntx_summary(file, desc+5) < 1) die("No such note: %s\n", *argv);
 
     /* Fill in the identification information. */
     strncpy(desc, *argv, 4);
@@ -509,7 +510,7 @@ int ntx_tags(char **argv, unsigned int argc)
 
     /* Read in the original listing of tags for this file. */
     if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", *argv)) return -1;
-    if(!(orig = ntx_find(file, *argv))) die("ERROR - No such note %s\n", *argv);
+    if(!(orig = ntx_find(file, *argv))) die("No such note: %s\n", *argv);
 
     /* Add any tags which don't yet exist. */
     for(cur = argv+1; *cur; cur++) {
@@ -581,31 +582,31 @@ int main(int argc, char **argv)
 
   /* Change to the notes database directory. */
   if(!snprintf(file, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
-    die("ERROR - Unknown execution failure.\n");
+    die("Unknown execution failure.\n");
 
   /* Ensure our target directory exists. */
   if(chdir(file) == -1) {
     mkdir(file, S_IRWXU);
-    if(chdir(file) == -1) die("ERROR - Unknown execution failure.\n");
+    if(chdir(file) == -1) die("Unknown execution failure.\n");
     mkdir(TAGS_DIR, S_IRWXU);
     mkdir(REFS_DIR, S_IRWXU);
     mkdir(NOTES_DIR, S_IRWXU);
   }
 
   if(!strcmp(argv[1], "add") && argc >= 3) {
-    if(ntx_add(argv+2) != 0) die("ERROR - Unknown execution failure.\n");
+    if(ntx_add(argv+2) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "edit") && argc == 3) {
-    if(ntx_edit(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
+    if(ntx_edit(argv[2]) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "list") && argc >= 2) {
     if(ntx_list(argv+2, argc - 2) != 0)
-      die("ERROR - Unknown execution failure.\n");
+      die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "tag")) {
     if(ntx_tags(argv+2, argc - 2) != 0)
-      die("ERROR - Unknown execution failure.\n");
+      die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "put") && argc == 3) {
-    if(ntx_put(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
+    if(ntx_put(argv[2]) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "rm") && argc == 3) {
-    if(ntx_del(argv[2]) != 0) die("ERROR - Unknown execution failure.\n");
+    if(ntx_del(argv[2]) != 0) die("Unknown execution failure.\n");
   } else ntx_usage(EXIT_FAILURE);
 
   return EXIT_SUCCESS;
