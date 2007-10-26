@@ -62,12 +62,6 @@ int ntx_summary(char *file, char *buf)
   return 1;
 }
 
-/* Open the file, read the whole thing in a line at a time,
- * replacing the line beginning with the 4-digit hex 'id' with
- * the line 'fix'.
- * Because we don't know the max line length as we do when
- * index files are guaranteed, we need to parse after we load.
- */
 char *ntx_buffer(char *file)
 {
   char *bbuf = NULL;
@@ -91,7 +85,6 @@ char *ntx_buffer(char *file)
   return bbuf;
 }
 
-/* XXX: Error checking. */
 char *ntx_tagstolist(char *id, char **tags)
 {
   char *list, *pos, **cur;
@@ -99,7 +92,7 @@ char *ntx_tagstolist(char *id, char **tags)
 
   /* Precompute the length of the tags. */
   for(cur = tags; *cur; cur++) len += strlen(*cur) + 1;
-  list = malloc(len);
+  if(!(list = malloc(len))) return NULL;
 
   strncpy(list, id, 4);
   list[4] = '\t';
@@ -117,6 +110,12 @@ char *ntx_tagstolist(char *id, char **tags)
   return list;
 }
 
+/* Open the file, read the whole thing in a line at a time,
+ * replacing the line beginning with the 4-digit hex 'id' with
+ * the line 'fix'.
+ * Because we don't know the max line length as we do when
+ * index files are guaranteed, we need to parse after we load.
+ */
 int ntx_replace(char *file, char *id, char *fix)
 {
   char *buf;
@@ -280,6 +279,9 @@ int ntx_edit(char *id)
       cur = ptr + 1;
     }
     free(tags);
+
+    /* Update the index file. */
+    if(ntx_replace(INDEX_FILE, id, note) < 1) return -1;
   }
 
   /* Dump the summary to STDOUT as confirmation that everything went well. */
@@ -288,8 +290,10 @@ int ntx_edit(char *id)
   return 0;
 }
 
-/* Structure for sorting files by size. */
-struct fstats {
+
+/* Helper functions for calculating multi-tag intersection. */
+
+struct fstats { /* Structure for sorting files by size. */
   char *path;
   unsigned int size;
 };
@@ -299,7 +303,6 @@ int ntx_sortstat(const void *a, const void *b)
   return ((struct fstats*)a)->size - ((struct fstats*)b)->size;
 }
 
-/* Helper functions for calculating multi-tag intersection. */
 unsigned long hash_line(void *v)
 {
   /* Just hash the 4-char prefix. */
@@ -328,7 +331,6 @@ int cmp_val(void *a, void *b)
 #undef  Cabv
 }
 
-/* We use compression as much as possible to minimize loading times. */
 int ntx_list(char **tags, unsigned int tagc)
 {
   char line[SUMMARY_WIDTH + PADDING_WIDTH];
@@ -418,8 +420,6 @@ int ntx_list(char **tags, unsigned int tagc)
     free(files);
   }
 
-  fputc('\n', stdout);
-
   return 0;
 }
 
@@ -462,7 +462,7 @@ int ntx_del(char *id)
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
   if(ntx_replace(file, id, NULL) < 1) return -1;
 
-  /* Remove the note itself from notes/ */
+  /* Remove the note itself from NOTES_DIR. */
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
   if(unlink(file) != 0) return -1;
 
@@ -479,7 +479,6 @@ int ntx_tags(char **argv, unsigned int argc)
     if(!dir) return -1;
 
     while((cur = readdir(dir))) if(cur->d_name[0] != '.') puts(cur->d_name);
-    fputc('\n', stdout);
 
     closedir(dir);
   } else if(argc == 1) { /* List all tags of a note. */
@@ -565,8 +564,7 @@ void ntx_usage(int retcode)
   puts("Notes on the output of 'ntx list':");
   puts("\t'ntx list' outputs a four-byte hexidecimal ID, followed by a tab,");
   printf("\tand then a brief summary comprised of the first %d bytes of the\n", SUMMARY_WIDTH);
-  puts("\tfirst line of the saved note. This is currently not updated when");
-  puts("\ta note changes.\n");
+  puts("\tfirst line of the saved note.");
 
   exit(retcode);
 }
