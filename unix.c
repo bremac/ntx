@@ -54,12 +54,12 @@ long int ntx_flen(char *file)
   return tmp.st_size;
 }
 
-void *ntx_dopen(char *dir)
+DIR *ntx_dopen(char *dir)
 {
   return opendir(dir);
 }
 
-char *ntx_dread(void *dir)
+char *ntx_dread(DIR *dir)
 {
   struct dirent *dirp;
   dirp = readdir(dir);
@@ -67,7 +67,7 @@ char *ntx_dread(void *dir)
   return dirp->d_name;
 }
 
-int ntx_dclose(void *dir)
+int ntx_dclose(DIR *dir)
 {
   return closedir(dir);
 }

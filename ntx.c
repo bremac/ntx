@@ -15,7 +15,6 @@
 #define PADDING_WIDTH 7
 
 /* Builtin Subdirectories. */
-#define NTX_DIR       ".ntx"
 #define TAGS_DIR      "tags"
 #define REFS_DIR      "refs"
 #define NOTES_DIR     "notes"
@@ -575,17 +574,11 @@ void ntx_usage(int retcode)
 
 int main(int argc, char **argv)
 {
-  char file[FILE_MAX];
-
   /* Very few arguments, so we use a hand-written parser. */
   if(argc < 2) ntx_usage(EXIT_FAILURE);
 
   if(!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))
     ntx_usage(EXIT_SUCCESS);
-
-  /* Change to the notes database directory. */
-  if(!snprintf(file, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
-    die("Unknown execution failure.\n");
 
   /* Change to/create our root directory. */
   ntx_homedir(TAGS_DIR, REFS_DIR, NOTES_DIR, NULL);
