@@ -2,11 +2,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <windows.h>
 #include <io.h>
 #include <fcntl.h>
 #include <process.h>
 
-#define NTX_DIR ".ntx"
+#define NTX_DIR "ntx"
 #define FILE_MAX (FILENAME_MAX+1)
 
 /* Prototypes of utility functions. */
@@ -25,12 +26,13 @@ void ntx_editor(char *file)
 void ntx_homedir(char *sub, ...)
 {
   va_list args;
-  char ntxroot[FILE_MAX];
+  char ntxroot[MAX_PATH+4];
   char *subd;
 
   va_start(args, sub);
-  if(!snprintf(ntxroot, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
+  if(SHGetFolderPath(NULL, CSIDL_APPDATA|CSIDL_FLAG_CREATE, NULL, 0, ntxroot))
     die("Unknown execution failure.\n");
+  strcat(ntxroot, NTX_DIR);
 
   if(_chdir(ntxroot) == -1) {
     _mkdir(ntxroot, S_IRWXU);
