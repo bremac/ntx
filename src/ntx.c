@@ -95,7 +95,7 @@ char *ntx_buffer(char *file)
 char *ntx_tagstolist(char *id, char **tags)
 {
   char *list, *pos, **cur;
-  unsigned int len = 7; /* ID + tab + newline + NULL. */
+  unsigned int len = PADDING_WIDTH; /* ID + tab + newline + NULL. */
 
   /* Precompute the length of the tags. */
   for(cur = tags; *cur; cur++) len += strlen(*cur) + 1;
@@ -245,19 +245,19 @@ int ntx_add(char **tags)
 
 int ntx_edit(char *id)
 {
-  char file[FILE_MAX], head[SUMMARY_WIDTH + PADDING_WIDTH];
+  char file[FILE_MAX], head[SUMMARY_WIDTH + 2];
   char note[SUMMARY_WIDTH + PADDING_WIDTH];
 
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
 
   /* Check that the note exists first. */
-  if(ntx_summary(file, head+5) < 1) die("No such note: %s\n", id);
+  if(ntx_summary(file, head) < 1) die("No such note: %s\n", id);
   ntx_editor(file);
 
   /* See if the header has changed; If so, rewrite the headers. */
   /* XXX: If we can't reread the file, do we need to take action? */
   if(ntx_summary(file, note+5) < 1) die("Unable to read %s\n", id);
-  if(strcmp(head+5, note+5)) {
+  if(strcmp(head, note+5)) {
     char *tags, *cur, *ptr;
 
     /* Fill in the identification information. */
