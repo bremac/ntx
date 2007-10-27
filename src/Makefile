@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-O3 -Wall
+CFLAGS=-g3 -Wall
 LIBS=-lz
 PREFIX=/usr/local
 BINDIR=$(PREFIX)/bin
@@ -13,7 +13,7 @@ OBJECT=$(SOURCE:.c=.o) $(SYSTEM:.c=.o)
 BIN=ntx
 
 all: $(BIN)
-	strip $(BIN)
+#	strip $(BIN)
 
 clean:
 	rm -f $(BIN) $(OBJECT)
