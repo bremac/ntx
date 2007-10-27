@@ -498,7 +498,7 @@ int ntx_tags(char *id)
 
 int ntx_retag(char *id, char **tags)
 {
-  char file[FILE_MAX], desc[SUMMARY_WIDTH + 2];
+  char file[FILE_MAX], desc[SUMMARY_WIDTH + PADDING_WIDTH];
   char *tmp, *next, *orig, **cur;
 
   /* Get the summary in case we need to write it. */
@@ -593,7 +593,7 @@ int main(int argc, char **argv)
     if(ntx_put(argv[2]) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "rm") && argc == 3) {
     if(ntx_del(argv[2]) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "tag") && argc > 2) {
+  } else if(!strcmp(argv[1], "tag") && argc > 3) {
     if(ntx_retag(argv[2], argv+3) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "tag") && (argc == 2 || argc == 3)) {
     if(ntx_tags(argv[2]) != 0) die("Unknown execution failure.\n");

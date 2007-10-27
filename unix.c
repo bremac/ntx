@@ -39,7 +39,7 @@ void ntx_homedir(char *sub, ...)
   if(chdir(ntxroot) == -1) {
     mkdir(ntxroot, S_IRWXU);
     if(chdir(ntxroot) == -1) die("Unable to enter directory %s.\n", ntxroot);
-    while((subd = va_arg(args, char *))) {
+    for(subd = sub; subd; subd = va_arg(args, char *)) {
       if(mkdir(subd, S_IRWXU) == -1)
         die("Cannot make directory %s.\n", subd);
     }
