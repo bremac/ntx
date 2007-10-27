@@ -3,16 +3,13 @@
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <dirent.h>
 #include <zlib.h>
 #include "hash_table.h"
 
+/* XXX: Report I/O errors, memory errors, corrupt files, etc. */
+
 /* Buffer size definitions. */
-#define FILE_MAX      1024
+#define FILE_MAX      (FILENAME_MAX+1)
 #define BUFFER_MAX    8192
 #define SUMMARY_WIDTH 58
 #define PADDING_WIDTH 7
@@ -23,6 +20,17 @@
 #define REFS_DIR      "refs"
 #define NOTES_DIR     "notes"
 #define INDEX_FILE    "index"
+
+
+/* Prototypes of system-dependent functions. */
+void ntx_editor(char *file);
+void ntx_homedir(char *sub, ...);
+long int ntx_flen(char *file);
+
+typedef void * n_dir;
+n_dir ntx_dopen(char *dir);
+char *ntx_dread(n_dir dir);
+int ntx_dclose(n_dir dir);
 
 
 /* Utility/Refactored functions. */
@@ -141,7 +149,7 @@ int ntx_replace(char *file, char *id, char *fix)
   gzclose(f);
   free(buf);
 
-  if(written == 0) unlink(file); /* Remove the file if it is empty. */
+  if(written == 0) remove(file); /* Remove the file if it is empty. */
 
   return 1;
 }
@@ -180,17 +188,6 @@ int ntx_append(char *file, char *str)
   return 1;
 }
 
-void ntx_editor(char *file)
-{
-  char *editor = getenv("EDITOR");
-  pid_t child;
-
-  if(!editor) die("The environment variable EDITOR is unset.");
-
-  if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
-  else waitpid(child, NULL, 0);
-}
-
 
 /* Front-end functions, user interaction. */
 int ntx_add(char **tags)
@@ -218,7 +215,7 @@ int ntx_add(char **tags)
   /* Get the summary line, and write it in abbreviated form to each index. */
   if((ret = ntx_summary(file, note+5)) < 1) {
     puts("No new note was recorded.");
-    if(ret == -2) unlink(file);
+    if(ret == -2) remove(file);
     return 0;
   }
 
@@ -359,9 +356,9 @@ int ntx_list(char **tags, unsigned int tagc)
   } else { /* Calculate the union of the sets from the tag files. */
     char *name;
     hash_t *table;
-    struct stat temp;
     struct fstats *files = malloc(sizeof(struct fstats) * tagc);
     unsigned int i, len, exists;
+    long int size;
 
     /* Sort the files; We'll likely be best starting with the smallest. */
     /* Stat and load the files into the buffers for sorting. */
@@ -369,10 +366,10 @@ int ntx_list(char **tags, unsigned int tagc)
       len = 6 + strlen(tags[i]);
       name = malloc(len);
       if(!snprintf(name, len, TAGS_DIR"/%s", tags[i])) return -1;
-      if(stat(name, &temp) != 0) die("No such tag: %s\n", tags[i]);
 
+      if((size = ntx_flen(name)) == -1) die("No such tag: %s\n", tags[i]);
       files[i].path = name;
-      files[i].size = temp.st_size;
+      files[i].size = size;
     }
 
     qsort(files, tagc, sizeof(struct fstats), ntx_sortstat);
@@ -465,7 +462,7 @@ int ntx_del(char *id)
 
   /* Remove the note itself from NOTES_DIR. */
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(unlink(file) != 0) return -1;
+  if(remove(file) != 0) return -1;
 
   free(buf);
   return 0;
@@ -474,14 +471,13 @@ int ntx_del(char *id)
 int ntx_tags(char *id)
 {
   if(!id) { /* List all tags in the database. */
-    DIR *dir = opendir(TAGS_DIR);
-    struct dirent *cur;
+    char *name;
+    n_dir dir = ntx_dopen(TAGS_DIR);
 
     if(!dir) return -1;
+    while((name = ntx_dread(dir))) if(name[0] != '.') puts(name);
 
-    while((cur = readdir(dir))) if(cur->d_name[0] != '.') puts(cur->d_name);
-
-    closedir(dir);
+    ntx_dclose(dir);
   } else { /* List all tags of a note. */
     char file[FILE_MAX], *buf, *ptr, *cur;
 
@@ -591,14 +587,8 @@ int main(int argc, char **argv)
   if(!snprintf(file, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
     die("Unknown execution failure.\n");
 
-  /* Ensure our target directory exists. */
-  if(chdir(file) == -1) {
-    mkdir(file, S_IRWXU);
-    if(chdir(file) == -1) die("Unknown execution failure.\n");
-    mkdir(TAGS_DIR, S_IRWXU);
-    mkdir(REFS_DIR, S_IRWXU);
-    mkdir(NOTES_DIR, S_IRWXU);
-  }
+  /* Change to/create our root directory. */
+  ntx_homedir(TAGS_DIR, REFS_DIR, NOTES_DIR, NULL);
 
   if(!strcmp(argv[1], "add") && argc >= 3) {
     if(ntx_add(argv+2) != 0) die("Unknown execution failure.\n");

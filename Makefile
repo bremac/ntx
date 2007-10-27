@@ -6,8 +6,9 @@ BINDIR=$(PREFIX)/bin
 .PHONY=clean install
 
 SOURCE=ntx.c hash_table.c lookup2.c
+SYSTEM=unix.c
 
-OBJECT=$(SOURCE:.c=.o)
+OBJECT=$(SOURCE:.c=.o) $(SYSTEM:.c=.o)
 
 BIN=ntx
 
