@@ -471,9 +471,9 @@ int ntx_del(char *id)
   return 0;
 }
 
-int ntx_tags(char **argv, unsigned int argc)
+int ntx_tags(char *id)
 {
-  if(argc == 0) { /* List all tags in the database. */
+  if(!id) { /* List all tags in the database. */
     DIR *dir = opendir(TAGS_DIR);
     struct dirent *cur;
 
@@ -482,11 +482,11 @@ int ntx_tags(char **argv, unsigned int argc)
     while((cur = readdir(dir))) if(cur->d_name[0] != '.') puts(cur->d_name);
 
     closedir(dir);
-  } else if(argc == 1) { /* List all tags of a note. */
+  } else { /* List all tags of a note. */
     char file[FILE_MAX], *buf, *ptr, *cur;
 
-    if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", *argv)) return -1;
-    if(!(buf = ntx_find(file, *argv))) die("No such note: %s\n", *argv);
+    if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+    if(!(buf = ntx_find(file, id))) die("No such note: %s\n", id);
 
     cur = buf + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
@@ -496,52 +496,56 @@ int ntx_tags(char **argv, unsigned int argc)
     }
 
     free(buf);
-  } else { /* Re-tag a note. */
-    char file[FILE_MAX], desc[SUMMARY_WIDTH + 2];
-    char *tmp, *next, *orig, **cur;
-
-    /* Get the summary in case we need to write it. */
-    if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", *argv)) return -1;
-    if(ntx_summary(file, desc+5) < 1) die("No such note: %s\n", *argv);
-
-    /* Fill in the identification information. */
-    strncpy(desc, *argv, 4);
-    desc[4] = '\t';
-
-    /* Read in the original listing of tags for this file. */
-    if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", *argv)) return -1;
-    if(!(orig = ntx_find(file, *argv))) die("No such note: %s\n", *argv);
-
-    /* Add any tags which don't yet exist. */
-    for(cur = argv+1; *cur; cur++) {
-      if(!strstr(orig, *cur)) { /* Add the tag to the file. */
-        if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur)) return -1;
-        if(!ntx_append(file, desc)) return -1;
-      }
-    }
-   
-    /* Remove any tags which don't exist any more. */
-    for(tmp = orig+5; (next = strchr(tmp, ';')); tmp = next + 1) {
-      *next = '\0';
-      for(cur = argv+1; *cur; cur++)
-        if(strcmp(*cur, tmp) == 0) break;
-
-      if(!*cur) { /* Remove any tags we didn't find. */
-        if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp)) return -1;
-        if(ntx_replace(file, *argv, NULL) < 1) return -1;
-      }
-    }
-
-    /* Update the backreference with the new set of tags. */
-    tmp = ntx_tagstolist(*argv, argv+1);
-    if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", *argv)) return -1;
-    if(ntx_replace(file, *argv, tmp) < 1) {
-      free(tmp);
-      return -1;
-    }
-
-    free(tmp);
   }
+
+  return 0;
+}
+
+int ntx_retag(char *id, char **tags)
+{
+  char file[FILE_MAX], desc[SUMMARY_WIDTH + 2];
+  char *tmp, *next, *orig, **cur;
+
+  /* Get the summary in case we need to write it. */
+  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
+  if(ntx_summary(file, desc+5) < 1) die("No such note: %s\n", id);
+
+  /* Fill in the identification information. */
+  strncpy(desc, id, 4);
+  desc[4] = '\t';
+
+  /* Read in the original listing of tags for this file. */
+  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+  if(!(orig = ntx_find(file, id))) die("No such note: %s\n", id);
+
+  /* Add any tags which don't yet exist. */
+  for(cur = tags; *cur; cur++) {
+    if(!strstr(orig, *cur)) { /* Add the tag to the file. */
+      if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur)) return -1;
+      if(!ntx_append(file, desc)) return -1;
+    }
+  }
+   
+  /* Remove any tags which don't exist any more. */
+  for(tmp = orig+5; (next = strchr(tmp, ';')); tmp = next + 1) {
+    *next = '\0';
+    for(cur = tags; *cur; cur++)
+      if(strcmp(*cur, tmp) == 0) break;
+
+    if(!*cur) { /* Remove any tags we didn't find. */
+      if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp)) return -1;
+      if(ntx_replace(file, id, NULL) < 1) return -1;
+    }
+  }
+
+  /* Update the backreference with the new set of tags. */
+  tmp = ntx_tagstolist(id, tags);
+  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+  if(ntx_replace(file, id, tmp) < 1) {
+    free(tmp);
+    return -1;
+  }
+  free(tmp);
 
   return 0;
 }
@@ -549,12 +553,13 @@ int ntx_tags(char **argv, unsigned int argc)
 void ntx_usage(int retcode)
 {
   puts("Usage:\tntx [mode] [arguments] ..\n");
-  puts("Modes:\tadd  [tags]\t\tAdd a note from STDIN to tags.");
+  puts("Modes:\tadd  [tags ..]\t\tAdd a note to tags, with $EDITOR.");
   puts("\tedit [hex]\t\tEdit the note identified by the ID hex.");
+  puts("\tlist <tags ..>\t\tList the notes in the intersection of tags.");
   puts("\tput  [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
-  puts("\tlist <tags>\t\tList the notes in the intersection of tags.");
-  puts("\trm   [hex]\t\tDelete the node identified by the ID hex.");
-  puts("\ttag  <hex <tags ..>>\tPrint a list of the tags in the database.\n");
+  puts("\trm   [hex]\t\tDelete the note identified by the ID hex.");
+  puts("\ttag  [hex] [tags ..]\t\tRe-tag hex with the list tags.");
+  puts("\ttags <hex>\t\tPrint a list of the tags in the database.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
 
   puts("Input file format:");
@@ -598,15 +603,15 @@ int main(int argc, char **argv)
   } else if(!strcmp(argv[1], "edit") && argc == 3) {
     if(ntx_edit(argv[2]) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "list") && argc >= 2) {
-    if(ntx_list(argv+2, argc - 2) != 0)
-      die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "tag")) {
-    if(ntx_tags(argv+2, argc - 2) != 0)
-      die("Unknown execution failure.\n");
+    if(ntx_list(argv+2, argc - 2) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "put") && argc == 3) {
     if(ntx_put(argv[2]) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "rm") && argc == 3) {
     if(ntx_del(argv[2]) != 0) die("Unknown execution failure.\n");
+  } else if(!strcmp(argv[1], "tag") && argc > 3) {
+    if(ntx_retag(argv[2], argv+3) != 0) die("Unknown execution failure.\n");
+  } else if(!strcmp(argv[1], "tags") && (argc == 2 || argc == 3)) {
+    if(ntx_tags(argv[2]) != 0) die("Unknown execution failure.\n");
   } else ntx_usage(EXIT_FAILURE);
 
   return EXIT_SUCCESS;
