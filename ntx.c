@@ -558,9 +558,11 @@ void ntx_usage(int retcode)
   puts("\tlist <tags ..>\t\tList the notes in the intersection of tags.");
   puts("\tput  [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
   puts("\trm   [hex]\t\tDelete the note identified by the ID hex.");
+  puts("\ttag  <hex>\t\tPrint a list of the tags in the database.\n");
   puts("\ttag  [hex] [tags ..]\t\tRe-tag hex with the list tags.");
-  puts("\ttags <hex>\t\tPrint a list of the tags in the database.\n");
   puts("\t-h or --help\t\tPrint this information.\n");
+
+  /* XXX: Include a brief description of each mode here. */
 
   puts("Input file format:");
   puts("\tntx assumes that a short first line may be used as a summary of");
@@ -608,9 +610,9 @@ int main(int argc, char **argv)
     if(ntx_put(argv[2]) != 0) die("Unknown execution failure.\n");
   } else if(!strcmp(argv[1], "rm") && argc == 3) {
     if(ntx_del(argv[2]) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "tag") && argc > 3) {
+  } else if(!strcmp(argv[1], "tag") && argc > 2) {
     if(ntx_retag(argv[2], argv+3) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "tags") && (argc == 2 || argc == 3)) {
+  } else if(!strcmp(argv[1], "tag") && (argc == 2 || argc == 3)) {
     if(ntx_tags(argv[2]) != 0) die("Unknown execution failure.\n");
   } else ntx_usage(EXIT_FAILURE);
 
