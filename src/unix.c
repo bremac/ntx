@@ -29,20 +29,21 @@ void ntx_editor(char *file)
 void ntx_homedir(char *sub, ...)
 {
   va_list args;
-  char ntxroot[FILE_MAX];
+  char ntxroot[FILE_MAX], *path;
   char *subd;
 
   va_start(args, sub);
-  if(!snprintf(ntxroot, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
-    die("Unknown execution failure.\n");
+  if(!(path = getenv("NTXROOT"))) {
+    if(!snprintf(ntxroot, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
+      die("Unknown execution failure.\n");
+    path = ntxroot;
+  }
 
-  if(chdir(ntxroot) == -1) {
-    mkdir(ntxroot, S_IRWXU);
-    if(chdir(ntxroot) == -1) die("Unable to enter directory %s.\n", ntxroot);
-    for(subd = sub; subd; subd = va_arg(args, char *)) {
-      if(mkdir(subd, S_IRWXU) == -1)
-        die("Cannot make directory %s.\n", subd);
-    }
+  if(chdir(path) == -1) {
+    mkdir(path, S_IRWXU);
+    if(chdir(path) == -1) die("Unable to enter directory %s.\n", path);
+    for(subd = sub; subd; subd = va_arg(args, char *))
+      if(mkdir(subd, S_IRWXU) == -1) die("Cannot make directory %s.\n", subd);
   }
   va_end(args);
 }
