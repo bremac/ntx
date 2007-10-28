@@ -1,7 +1,3 @@
-#!/bin/bash
-# Script to add a note, used as an EDITOR replacement for testing.
-
-cat > $1 <<EOF
 Add deletion support to ntx via a tagged/ directory.
 
 A secondary inverse-associative directory must be created to
@@ -18,4 +14,3 @@ id [tab] tag;tag;..;tag;\n
 cbab    pacman;todo;
 cb2e    soulfu;todo;
 cb8c    pacman;bugs;todo;
-EOF

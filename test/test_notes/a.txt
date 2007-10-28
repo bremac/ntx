@@ -1,7 +1,3 @@
-#!/bin/bash
-# Script to add a note, used as an EDITOR replacement for testing.
-
-cat > $1 <<EOF
 Create a community soulfu git repository for the *nix port.
 
 Unfortunately, the current soulfu 'development' model needs work:
@@ -15,4 +11,3 @@ progress possible.
 Contingent on this is liberating the engine source under the GPL, so
 that works can be _legally_ distributed, instead of sneaking around
 and hoping to find a loophole.
-EOF

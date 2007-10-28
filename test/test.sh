@@ -5,6 +5,7 @@
 
 NTX=../src/ntx
 TAB="	"
+EDIT=editor.sh
 export NTXROOT=`pwd`/"ntx_test"
 
 if [ -d $NTXROOT ]; then
@@ -19,8 +20,19 @@ function _ntx {
   $NTX $OP $@
 }
 
+# Used to generate a script for EDITOR.
+function ed_write {
+  SRC=test_notes/$1.txt
+
+  echo "#!/bin/bash" > $EDIT
+  echo 'cat > $1 <<EOF' >> $EDIT
+  cat test_notes/$1.txt >> $EDIT
+  echo 'EOF' >> $EDIT
+  chmod +x $EDIT
+}
+
 function die {
-#  rm -r $NTXROOT
+  echo "The directory $NTXROOT has been preserved for inspection."
   exit -1
 }
 
@@ -33,18 +45,22 @@ function assert {
   fi
 }
 
+
 # Set up the notes through a series of clever hacks.
-V=`_ntx a.sh add soulfu git todo`
+ed_write a
+V=`_ntx $EDIT add soulfu git todo`
 Av="Create a community soulfu git repository for the *nix p..."
 Ai=`echo $V | cut -b 1-4`
 assert "`echo $V | cut -b 6-`" "$Av"
 
-V=`_ntx b.sh add ntx todo`
+ed_write b
+V=`_ntx $EDIT add ntx todo`
 Bv="Add deletion support to ntx via a tagged/ directory."
 Bi=`echo $V | cut -b 1-4`
 assert "`echo $V | cut -b 6-`" "$Bv"
 
-V=`_ntx c.sh add pacman COW todo`
+ed_write c
+V=`_ntx $EDIT add pacman COW todo`
 Cv="Complete the Copy-On-Write pacman pseudo-FS/database."
 Ci=`echo $V | cut -b 1-4`
 assert "`echo $V | cut -b 6-`" "$Cv"
@@ -105,11 +121,23 @@ assert "$TAGS" "*unix*"
 assert "`$NTX list unix`" "$Ai$TAB$Av
 $Ci$TAB$Cv"
 
-# Test altering a note.
-# Re-test above list tests.
+# Test removing a tag.
+# XXX
 
-# Test deleting a note.
+# Test altering a note - Edit A to be equal to b.
+ed_write b
+V=`_ntx $EDIT edit $Ai`
+assert "`echo $V | cut -b 6-`" "$Bv"
+
+# Re-test to ensure the index and tags have changed.
+assert "`$NTX list`" "$Ai$TAB$Bv
+$Bi$TAB$Bv
+$Ci$TAB$Cv"
+assert "`$NTX list todo git`" "$Ai$TAB$Bv"
+
+# Test deleting a note - Delete A from the set.
 # Re-test listings and tags.
 
 # Clean up after ourselves.
 rm -r $NTXROOT
+rm $EDIT
