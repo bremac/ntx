@@ -31,15 +31,15 @@ function assert {
 # Set up the notes through a series of clever hacks.
 V=`_ntx a.sh add soulfu git todo`
 Ai=`echo $V | cut -b 1-4`
-assert "$V" "*Create a community soulfu git repository for the *nix p..."
+assert "`echo $V | cut -b 6-`" "Create a community soulfu git repository for the *nix p..."
 
 V=`_ntx b.sh add ntx todo`
 Bi=`echo $V | cut -b 1-4`
-assert "$V" "*Add deletion support to ntx via a tagged/ directory."
+assert "`echo $V | cut -b 6-`" "Add deletion support to ntx via a tagged/ directory."
 
 V=`_ntx c.sh add pacman COW todo`
 Ci=`echo $V | cut -b 1-4`
-assert "$V" "*Complete the Copy-On-Write pacman pseudo-FS/database."
+assert "`echo $V | cut -b 6-`" "Complete the Copy-On-Write pacman pseudo-FS/database."
 
 # Test listing tags. Unfortunately, can't guarantee the order.
 TAGS=`$NTX tag`
@@ -61,7 +61,16 @@ COW
 todo"
 
 # Test per-tag retagging. Again, we test for a defined set and order.
+# Re-test above tag tests.
 
+# Test a full-index listing.
+# Test several combinations and single tags.
+
+# Test altering a note.
+# Re-test above list tests.
+
+# Test deleting a note.
+# Re-test listings and tags.
 
 # Clean up after ourselves.
 rm -r $NTXROOT
