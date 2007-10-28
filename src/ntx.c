@@ -139,7 +139,7 @@ int ntx_replace(char *file, char *id, char *fix)
     if(strncmp(id, ptr, 4) == 0) {
       if(fix) gzputs(f, fix);
     } else {
-      if(end) gzwrite(f, ptr, end-ptr);
+      if(end) gzwrite(f, ptr, end-ptr+1);
       else gzputs(f, ptr);
     }
     if(!end) break;
@@ -524,8 +524,7 @@ int ntx_retag(char *id, char **tags)
   /* Remove any tags which don't exist any more. */
   for(tmp = orig+5; (next = strchr(tmp, ';')); tmp = next + 1) {
     *next = '\0';
-    for(cur = tags; *cur; cur++)
-      if(strcmp(*cur, tmp) == 0) break;
+    for(cur = tags; *cur; cur++) if(strcmp(*cur, tmp) == 0) break;
 
     if(!*cur) { /* Remove any tags we didn't find. */
       if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp)) return -1;
