@@ -12,6 +12,49 @@ if [ -d $NTXROOT ]; then
   rm -r $NTXROOT
 fi
 
+####         The Test Notes         ####
+A="Create a community soulfu git repository for the *nix port.
+
+Unfortunately, the current soulfu 'development' model needs work:
+Changes made are not committed to CVS, and developer time is wasted
+recreating works already created and documented by others. The
+gains from CVS are obviously paltry compared to those offered by
+a more distributed model, given the amount of work which is required,
+so a mob branch will be opened to all in order to prompt the fastest
+progress possible.
+
+Contingent on this is liberating the engine source under the GPL, so
+that works can be _legally_ distributed, instead of sneaking around
+and hoping to find a loophole."
+
+B="Add deletion support to ntx via a tagged/ directory.
+
+A secondary inverse-associative directory must be created to
+hold backreferences to the tag indices which contain each
+note. Ideally, these should be packed by the prefix of each
+ID, in order to minimize wasted space due to block boundaries.
+Given their small size and O(n) seek times, zlib compression
+will likely provide benefits, possibly the ability to save
+256 backreferences to a file (named with the first two hex
+bytes as an identifier.)
+
+Uncompressed format:
+id [tab] tag;tag;..;tag;\n
+cbab    pacman;todo;
+cb2e    soulfu;todo;
+cb8c    pacman;bugs;todo;"
+
+C="Complete the Copy-On-Write pacman pseudo-FS/database.
+
+The Copy-On-Write pseudo-FS still requires more work: In particular,
+the transactional model of pacman needs to be examined to confirm
+the correct workings of the pseudo-FS, and guarantee correctness.
+
+Additionally, the hash table code should be integrated into the file
+conflict resolution in a seperate patch, to prove the value of having
+a hash table implementation for the corner cases."
+
+
 # Used to manipulate ntx add/edit.
 function _ntx {
   export EDITOR=`pwd`/$1
@@ -22,11 +65,9 @@ function _ntx {
 
 # Used to generate a script for EDITOR.
 function ed_write {
-  SRC=test_notes/$1.txt
-
   echo "#!/bin/bash" > $EDIT
   echo 'cat > $1 <<EOF' >> $EDIT
-  cat test_notes/$1.txt >> $EDIT
+  echo "$1" >> $EDIT
   echo 'EOF' >> $EDIT
   chmod +x $EDIT
 }
@@ -47,19 +88,19 @@ function assert {
 
 
 # Set up the notes through a series of clever hacks.
-ed_write a
+ed_write "$A"
 V=`_ntx $EDIT add soulfu git todo`
 Av="Create a community soulfu git repository for the *nix p..."
 Ai=`echo $V | cut -b 1-4`
 assert "`echo $V | cut -b 6-`" "$Av"
 
-ed_write b
+ed_write "$B"
 V=`_ntx $EDIT add ntx todo`
 Bv="Add deletion support to ntx via a tagged/ directory."
 Bi=`echo $V | cut -b 1-4`
 assert "`echo $V | cut -b 6-`" "$Bv"
 
-ed_write c
+ed_write "$C"
 V=`_ntx $EDIT add pacman COW todo`
 Cv="Complete the Copy-On-Write pacman pseudo-FS/database."
 Ci=`echo $V | cut -b 1-4`
@@ -125,7 +166,7 @@ $Ci$TAB$Cv"
 # XXX
 
 # Test altering a note - Edit A to be equal to b.
-ed_write b
+ed_write "$B"
 V=`_ntx $EDIT edit $Ai`
 assert "`echo $V | cut -b 6-`" "$Bv"
 
