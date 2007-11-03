@@ -165,7 +165,7 @@ char *ntx_find(char *file, char *id)
     end = strchr(ptr, '\n');
     if(strncmp(id, ptr, 4) == 0) {
       *end = '\0';
-      ptr = strdup(ptr);
+      if(!(ptr = strdup(ptr))) return NULL;
       free(buf);
       return ptr;
     }
