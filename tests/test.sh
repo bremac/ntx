@@ -3,7 +3,7 @@
 # Add each bug as it is found to this, to form a set of regression tests.
 # They'll hardly need to be comprehensive anyway, given such a small codebase.
 
-NTX=../src/ntx
+NTX=../ntx
 TAB="	"
 EDIT=editor.sh
 export NTXROOT=`pwd`/"ntx_test"
