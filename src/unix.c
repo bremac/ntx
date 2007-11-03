@@ -7,8 +7,9 @@
 #include <unistd.h>
 #include <dirent.h>
 
-#define NTX_DIR ".ntx"
-#define FILE_MAX (FILENAME_MAX+1)
+#define NTX_DIR     ".ntx"
+#define BUFFER_LEN  1024
+#define FILE_MAX    (FILENAME_MAX+1)
 
 /* Prototypes of utility functions. */
 void die(char *fmt, ...);
@@ -16,13 +17,24 @@ void die(char *fmt, ...);
 /* System-dependent functions for POSIX. */
 void ntx_editor(char *file)
 {
-  char *editor = getenv("EDITOR");
-  pid_t child;
+  if(isatty(STDIN_FILENO)) {
+    /* Open an editor if we're in interactive mode. */
+    char *editor = getenv("EDITOR");
+    pid_t child;
 
-  if(!editor) die("The environment variable EDITOR is unset.");
+    if(!editor) die("The environment variable EDITOR is unset.");
 
-  if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
-  else waitpid(child, NULL, 0);
+    if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
+    else waitpid(child, NULL, 0);
+  } else {
+    /* Copy data from stdin to the target file. */
+    FILE *f = fopen(file, "w");
+    char buffer[BUFFER_LEN];
+
+    if(!f) return;
+    while(fgets(buffer, BUFFER_LEN, stdin)) fputs(buffer, f);
+    fclose(f);
+  }
 }
 
 /* The final argument _must_ be NULL. */

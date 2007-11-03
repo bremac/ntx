@@ -176,6 +176,16 @@ $Bi$TAB$Bv
 $Ci$TAB$Cv"
 assert "`$NTX list todo git`" "$Ai$TAB$Bv"
 
+# Test resetting A to itself via stdin.
+V=`echo $A | $NTX edit $Ai`
+assert "`echo $V | cut -b 6-`" "$Av"
+
+# Re-test to ensure the index and tags have changed.
+assert "`$NTX list`" "$Ai$TAB$Av
+$Bi$TAB$Bv
+$Ci$TAB$Cv"
+assert "`$NTX list todo git`" "$Ai$TAB$Av"
+
 # Test deleting a note - Delete A from the set.
 # Re-test listings and tags.
 
