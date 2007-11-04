@@ -6,8 +6,6 @@
 #include <zlib.h>
 #include "hash_table.h"
 
-/* XXX: Report I/O errors, memory errors, corrupt files, etc. */
-
 /* Buffer size definitions. */
 #define FILE_MAX      (FILENAME_MAX+1)
 #define BUFFER_MAX    8192
@@ -31,6 +29,18 @@ n_dir ntx_dopen(char *dir);
 char *ntx_dread(n_dir dir);
 int ntx_dclose(n_dir dir);
 
+/* Level 0: Utility functions.
+ *          All return err_t values.
+ * Level 1: Driver functions.
+ *          Must handle each set of err_t values for each call.
+ *          To reduce boilerplate code, we can pass the err_t,
+ *          the file name, and a const char * describing the
+ *          operation on the file to ntx_perror to write the error.
+ * Level 2: Handles unhandled errors.
+ */
+typedef enum {
+  E_NONE, E_ACCESS, E_NOMEM, E_INVAL
+} err_t;
 
 /* Utility/Refactored functions. */
 void die(char *fmt, ...)
@@ -547,26 +557,27 @@ int ntx_retag(char *id, char **tags)
 void ntx_usage(int retcode)
 {
   puts("Usage:\tntx [mode] [arguments] ..\n");
-  puts("Modes:\tadd  [tags ..]\t\tAdd a note to tags, with $EDITOR.");
-  puts("\tedit [hex]\t\tEdit the note identified by the ID hex.");
-  puts("\tlist <tags ..>\t\tList the notes in the intersection of tags.");
+  puts("Modes:\tadd  [tags ..]\t\tAdd a note to tags.");
+  puts("\tedit [hex]\t\tEdit the note with the ID 'hex'.");
+  puts("\tlist <tags ..>\t\tList the notes in the intersection of 'tags'.");
   puts("\tput  [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
-  puts("\trm   [hex]\t\tDelete the note identified by the ID hex.");
-  puts("\ttag  <hex>\t\tPrint a list of the tags in the database.\n");
-  puts("\ttag  [hex] [tags ..]\t\tRe-tag hex with the list tags.");
+  puts("\trm   [hex]\t\tDelete the note identified by the ID 'hex'.");
+  puts("\ttag  <hex>\t\tPrint all tags, or those attached to the ID 'hex'.\n");
+  puts("\ttag  [hex] [tags ..]\tRe-tag 'hex' with the list 'tags'.");
   puts("\t-h or --help\t\tPrint this information.\n");
 
-  /* XXX: Include a brief description of each mode here. */
-
-  puts("Input file format:");
-  puts("\tntx assumes that a short first line may be used as a summary of");
-  puts("\tthe note in question. No further assumptions are made about the");
-  puts("\ttype, format, or size of the file.\n");
-
-  puts("Notes on the output of 'ntx list':");
+  /* XXX: Flow and paragraph form _must_ improve. */
+  puts("Understanding the output of 'ntx list':");
   puts("\t'ntx list' outputs a four-byte hexidecimal ID, followed by a tab,");
   printf("\tand then a brief summary comprised of the first %d bytes of the\n", SUMMARY_WIDTH);
-  puts("\tfirst line of the saved note.");
+  puts("\tfirst line of the saved note. This ID is used to refer to the note");
+  puts("\twhen using the edit, put, rm, and tag modes.\n");
+
+  puts("When adding or editing notes, the interface presented to the user");
+  puts("depends on the host operating environment. On POSIX-style systems,");
+  puts("if ntx is receiving input from a tty, the editor specified in the");
+  puts("environment variable EDITOR is used; otherwise, input is read from");
+  puts("STDIN to the target file.");
 
   exit(retcode);
 }
