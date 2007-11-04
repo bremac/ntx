@@ -7,7 +7,7 @@ wrapper source files: Two examples can be found in the source directory,
 named 'src/unix.c' and 'src/win32.c' respectively.
 
 This program makes very few assumptions about the underlying system in the
-core code itself; Almost all of the implicit assumptions hold true for all
+core code itself; almost all of the implicit assumptions hold true for all
 modern or recent operating systems. It assumes, of course, a C compiler
 which supports the required subset of ANSI C99, and ANSI-compliant manual
 memory management via the malloc() function. In addition, the zlib library
@@ -47,5 +47,5 @@ No further declarations, definitions, macros, or even headers are required
 beyond the single wrapper source file. Unfortunately, ntx is currently quite
 tightly bound to the command line via assumption of output to stdout and
 input as parameters, so it may not integrate quite so well into non-POSIX
-operating environments in its present form; Patches are welcome to correct
+operating environments in its present form; patches are welcome to correct
 this deficiency.
