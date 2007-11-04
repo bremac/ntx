@@ -1,0 +1,51 @@
+The Brief Guide to Porting ntx:
+
+The notetags-extended utility was written mainly to the ANSI C99 standard,
+however, some required operations are operating environment independent.
+These functionalities have been separated from the main utility into small
+wrapper source files: Two examples can be found in the source directory,
+named 'src/unix.c' and 'src/win32.c' respectively.
+
+This program makes very few assumptions about the underlying system in the
+core code itself; Almost all of the implicit assumptions hold true for all
+modern or recent operating systems. It assumes, of course, a C compiler
+which supports the required subset of ANSI C99, and ANSI-compliant manual
+memory management via the malloc() function. In addition, the zlib library
+is assumed to be available on the target system, and either directory
+hierarchies are supported, separated by the '/' character, or that the '/'
+character is valid in file names, and directories can be spoofed in the
+wrapper.
+
+The source file for a new wrapper must suitably define only six functions
+to be used by the ntx core. Their prototypes and descriptions follow:
+
+  /* Function to create or edit a given file. */
+  void ntx_editor(char *file);
+
+  /* Function to create the home directory for ntx, change to it, and *
+   * create a subdirectory for each supplied argument if necessary.   */
+  void ntx_homedir(char *sub, ...);
+
+  /* Get the length in bytes of a given file. As it is only used for  *
+   * a best-guess heuristic sort of the files for the list mode, it   *
+   * can simply return an arbitrary value if absolutely necessary.    */
+  long int ntx_flen(char *file);
+
+  /* Open a directory for listing, and return a handle to the caller. *
+   * Returns NULL if something went wrong.                            */
+  void *ntx_dopen(char *dir);
+
+  /* Return the next file name as a string given an open directory    *
+   * handle. Returns NULL if no further entries may be accessed.      */
+  char *ntx_dread(void *dir);
+
+  /* Close a given directory handle, and clean up after it. Returns   *
+   * non-zero if there was some sort of failure or error.             */
+  int ntx_dclose(void *dir);
+
+No further declarations, definitions, macros, or even headers are required
+beyond the single wrapper source file. Unfortunately, ntx is currently quite
+tightly bound to the command line via assumption of output to stdout and
+input as parameters, so it may not integrate quite so well into non-POSIX
+operating environments in its present form; Patches are welcome to correct
+this deficiency.
