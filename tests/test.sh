@@ -114,8 +114,7 @@ assert "`$NTX list todo`" "$Ai$TAB$Av
 $Bi$TAB$Bv
 $Ci$TAB$Cv"
 assert "`$NTX list todo git`" "$Ai$TAB$Av"
-assert "`$NTX list pacman ntx`" \
-"No notes exist in the intersection of those tags."
+assert "`$NTX list pacman ntx`" ""
 
 # Test listing tags. Unfortunately, can't guarantee the order.
 TAGS=`$NTX tag`
@@ -215,7 +214,7 @@ assert "`$NTX list`" "$Bi$TAB$Bv
 $Ci$TAB$Cv"
 assert "`$NTX list todo`" "$Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list git`" "No such tag: git"
+assert "`$NTX list git`" ""
 
 TAGS=`$NTX tag`
 assert "$TAGS" "*todo*"

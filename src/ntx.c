@@ -29,29 +29,19 @@ n_dir ntx_dopen(char *dir);
 char *ntx_dread(n_dir dir);
 int ntx_dclose(n_dir dir);
 
-/* Level 0: Utility functions.
- *          All return err_t values.
- * Level 1: Driver functions.
- *          Must handle each set of err_t values for each call.
- *          To reduce boilerplate code, we can pass the err_t,
- *          the file name, and a const char * describing the
- *          operation on the file to ntx_perror to write the error.
- * Level 2: Handles unhandled errors.
- */
-typedef enum {
-  E_NONE, E_ACCESS, E_NOMEM, E_INVAL
-} err_t;
-
 /* Utility/Refactored functions. */
 void die(char *fmt, ...)
 {
   va_list args;
 
   va_start(args, fmt);
-  vprintf(fmt, args);
+  fputs("ERROR: ", stderr);
+  vfprintf(stderr, fmt, args);
   va_end(args);
   exit(EXIT_FAILURE);
 }
+
+/* XXX: Update functions should write and rename a temporary file. */
 
 /* 'buf' should be SUMMARY_WIDTH + 2 bytes long. */
 int ntx_summary(char *file, char *buf)
@@ -223,7 +213,7 @@ int ntx_add(char **tags)
 
   /* Get the summary line, and write it in abbreviated form to each index. */
   if((ret = ntx_summary(file, note+5)) < 1) {
-    puts("No new note was recorded.");
+    fputs("No new note was recorded.\n", stderr);
     if(ret == -2) remove(file);
     return 0;
   }
@@ -234,17 +224,17 @@ int ntx_add(char **tags)
 
   for(ptr = tags; *ptr != NULL; ptr++) {
     if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *ptr)) return -1;
-    if(ntx_append(file, note) < 1) return -1;
+    if(ntx_append(file, note) < 1) die("Unable to append to %s.\n", file);
   }
 
   /* Add the new note to the base index. */
-  if(ntx_append(INDEX_FILE, note) < 1) return -1;
+  if(ntx_append(INDEX_FILE, note) < 1) die("Unable to append to index.\n");
 
   /* Append the tags to the backreference file. */
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", note)) return -1;
 
-  tmp = ntx_tagstolist(note, tags);
-  if(ntx_append(file, tmp) < 1) return -1;
+  if(!(tmp = ntx_tagstolist(note, tags))) return -1;
+  if(ntx_append(file, tmp) < 1) die("Unable to append to %s.\n", file);
   free(tmp);
 
   /* Dump the summary to STDOUT as confirmation that everything went well. */
@@ -261,12 +251,12 @@ int ntx_edit(char *id)
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
 
   /* Check that the note exists first. */
-  if(ntx_summary(file, head) < 1) die("No such note: %s\n", id);
+  if(ntx_summary(file, head) < 1) die("Unable open %s.\n", file);
   ntx_editor(file);
 
   /* See if the header has changed; If so, rewrite the headers. */
   /* XXX: If we can't reread the file, do we need to take action? */
-  if(ntx_summary(file, note+5) < 1) die("Unable to read %s\n", id);
+  if(ntx_summary(file, note+5) < 1) die("Unable to reread %s.\n", file);
   if(strcmp(head, note+5)) {
     char *tags, *cur, *ptr;
 
@@ -275,20 +265,23 @@ int ntx_edit(char *id)
     note[4] = '\t';
 
     if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-    tags = ntx_find(file, id);
+    if(!(tags = ntx_find(file, id)))
+      die("Unable to locate note %s in %s.\n", id, file);
 
     cur = tags + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) {
       *ptr = '\0';
       /* Update the tags - O(n) search through the affected indices. */
       if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", cur)) return -1;
-      if(ntx_replace(file, id, note) < 1) return -1;
+      if(ntx_replace(file, id, note) < 1)
+        die("Problem replacing info for note %s in %s.\n", id, file);
       cur = ptr + 1;
     }
     free(tags);
 
     /* Update the index file. */
-    if(ntx_replace(INDEX_FILE, id, note) < 1) return -1;
+    if(ntx_replace(INDEX_FILE, id, note) < 1)
+      die("Problem replacing info for note %s in index.\n", file);
   }
 
   /* Dump the summary to STDOUT as confirmation that everything went well. */
@@ -338,13 +331,14 @@ int cmp_val(void *a, void *b)
 #undef  Cabv
 }
 
+/* XXX: gzgets/hasht_* error checking. */
 int ntx_list(char **tags, unsigned int tagc)
 {
   char line[SUMMARY_WIDTH + PADDING_WIDTH];
   gzFile *f;
 
   /* Too many tags for proper ref-counting, or even sane evaluation. */
-  if(tagc > 127) die("Too many (more than 127) tags.");
+  if(tagc > 127) die("Too many (more than 127) tags.\n");
 
   if(tagc == 0) { /* No tags specified, open the index. */
     f = gzopen(INDEX_FILE, "r");
@@ -358,7 +352,7 @@ int ntx_list(char **tags, unsigned int tagc)
     if(!snprintf(name, FILE_MAX, TAGS_DIR"/%s", *tags)) return -1;
 
     f = gzopen(name, "r");
-    if(!f) die("No such tag: %s\n", tags[0]);
+    if(!f) die("Unable to open %s.\n", name);
 
     /* Duplicate each line from the index to STDOUT. */
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
@@ -376,7 +370,7 @@ int ntx_list(char **tags, unsigned int tagc)
       name = malloc(len);
       if(!snprintf(name, len, TAGS_DIR"/%s", tags[i])) return -1;
 
-      if((size = ntx_flen(name)) == -1) die("No such tag: %s\n", tags[i]);
+      if((size = ntx_flen(name)) == -1) die("Unable to open %s.\n", name);
       files[i].path = name;
       files[i].size = size;
     }
@@ -384,7 +378,7 @@ int ntx_list(char **tags, unsigned int tagc)
     qsort(files, tagc, sizeof(struct fstats), ntx_sortstat);
 
     /* Now, load the first, and check it with each hash. */
-    f = gzopen(files[0].path, "r");
+    f = gzopen(files[0].path, "r"); /* XXX: Error checking. */
     table = hasht_init(120, free, hash_line, hash_val, cmp_line, cmp_val);
 
     if(!table) return -1;
@@ -407,7 +401,7 @@ int ntx_list(char **tags, unsigned int tagc)
      * We will abort if exists == 0, meaning none were found.              */
     for(i = 1; i < tagc; i++) {
       exists = 0;
-      f = gzopen(files[i].path, "r");
+      f = gzopen(files[i].path, "r"); /* XXX: Error checking. */
       while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
         if((name = hasht_get(table, line))) {
           name[0]++; /* Increment the refcount. */
@@ -415,7 +409,7 @@ int ntx_list(char **tags, unsigned int tagc)
         }
       }
       gzclose(f);
-      if(exists == 0) die("No notes exist in the intersection of those tags.");
+      if(exists == 0) die("No notes exist in the intersection of those tags.\n");
     }
 
     /* Print all of the tags which had 'tagc' references. */
@@ -430,6 +424,7 @@ int ntx_list(char **tags, unsigned int tagc)
   return 0;
 }
 
+/* XXX: fgets error checking. */
 int ntx_put(char *id)
 {
   FILE *f;
@@ -437,7 +432,7 @@ int ntx_put(char *id)
   char buffer[BUFFER_MAX];
 
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(!(f = fopen(file, "r"))) die("No such note: %s\n", id);
+  if(!(f = fopen(file, "r"))) die("Unable to open %s.\n", id);
 
   /* Duplicate each line from the note to STDOUT. */
   while(fgets(buffer, BUFFER_MAX, f)) fputs(buffer, stdout);
@@ -451,29 +446,33 @@ int ntx_del(char *id)
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
 
   /* Find the line describing the tags of the given ID. */
-  buf = ntx_find(file, id);
+  if(!(buf = ntx_find(file, id)))
+    die("Unable to locate note %s in %s.\n", id, file);
 
   cur = buf + 5; /* Skip the ID, plus the tab. */
   while((ptr = strchr(cur, ';'))) {
     *ptr = '\0';
     /* Delete the tags - O(n) search through the affected indices. */
     if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", cur)) return -1;
-    if(ntx_replace(file, id, NULL) < 1) return -1;
+    if(ntx_replace(file, id, NULL) < 1)
+      die("Problem removing info for note %s from %s.\n", id, file);
     cur = ptr + 1;
   }
+  free(buf);
 
   /* Remove it from the index. */
-  if(ntx_replace(INDEX_FILE, id, NULL) < 1) return -1;
+  if(ntx_replace(INDEX_FILE, id, NULL) < 1)
+    die("Problem removing info for note %s from index.\n", id);
 
   /* Remove the backreference. */
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-  if(ntx_replace(file, id, NULL) < 1) return -1;
+  if(ntx_replace(file, id, NULL) < 1)
+    die("Problem removing info for note %s from %s.\n", id, file);
 
   /* Remove the note itself from NOTES_DIR. */
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(remove(file) != 0) return -1;
+  if(remove(file) != 0) die("Unable to remove note %s.\n", id);
 
-  free(buf);
   return 0;
 }
 
@@ -483,7 +482,7 @@ int ntx_tags(char *id)
     char *name;
     n_dir dir = ntx_dopen(TAGS_DIR);
 
-    if(!dir) return -1;
+    if(!dir) die("Unable to read directory %s.\n", TAGS_DIR);
     while((name = ntx_dread(dir))) if(name[0] != '.') puts(name);
 
     ntx_dclose(dir);
@@ -491,7 +490,8 @@ int ntx_tags(char *id)
     char file[FILE_MAX], *buf, *ptr, *cur;
 
     if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-    if(!(buf = ntx_find(file, id))) die("No such note: %s\n", id);
+    if(!(buf = ntx_find(file, id)))
+      die("Unable to locate note %s in %s.\n", id, file);
 
     cur = buf + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
@@ -499,7 +499,6 @@ int ntx_tags(char *id)
       puts(cur);
       cur = ptr + 1;
     }
-
     free(buf);
   }
 
@@ -513,7 +512,7 @@ int ntx_retag(char *id, char **tags)
 
   /* Get the summary in case we need to write it. */
   if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(ntx_summary(file, desc+5) < 1) die("No such note: %s\n", id);
+  if(ntx_summary(file, desc+5) < 1) die("Unable to read %s.\n", file);
 
   /* Fill in the identification information. */
   strncpy(desc, id, 4);
@@ -521,13 +520,14 @@ int ntx_retag(char *id, char **tags)
 
   /* Read in the original listing of tags for this file. */
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-  if(!(orig = ntx_find(file, id))) die("No such note: %s\n", id);
+  if(!(orig = ntx_find(file, id)))
+    die("Unable to locate note %s in %s.\n", id, file);
 
   /* Add any tags which don't yet exist. */
   for(cur = tags; *cur; cur++) {
     if(!strstr(orig, *cur)) { /* Add the tag to the file. */
       if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur)) return -1;
-      if(!ntx_append(file, desc)) return -1;
+      if(!ntx_append(file, desc)) die("Unable to append to %s.\n", file);
     }
   }
    
@@ -538,17 +538,16 @@ int ntx_retag(char *id, char **tags)
 
     if(!*cur) { /* Remove any tags we didn't find. */
       if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp)) return -1;
-      if(ntx_replace(file, id, NULL) < 1) return -1;
+      if(ntx_replace(file, id, NULL) < 1)
+        die("Problem removing info for note %s from %s.\n", id, file);
     }
   }
 
   /* Update the backreference with the new set of tags. */
   tmp = ntx_tagstolist(id, tags);
   if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-  if(ntx_replace(file, id, tmp) < 1) {
-    free(tmp);
-    return -1;
-  }
+  if(ntx_replace(file, id, tmp) < 1)
+    die("Problem updating info for note %s in %s.\n", id, file);
   free(tmp);
 
   return 0;

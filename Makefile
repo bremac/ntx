@@ -23,7 +23,7 @@ install: $(BIN)
 	install $(BIN) $(bindir)
 
 test: $(BIN)
-	@cd tests && bash test.sh && echo "All tests passed successfully."
+	@cd tests && bash test.sh 2>/dev/null && echo "All tests passed successfully."
 
 $(BIN): $(OBJECT)
 	$(CC) $^ -o $@ $(LIBS)
