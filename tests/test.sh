@@ -162,8 +162,29 @@ assert "$TAGS" "*unix*"
 assert "`$NTX list unix`" "$Ai$TAB$Av
 $Ci$TAB$Cv"
 
-# Test removing a tag.
-# XXX
+# Test removing a tag and altering one.
+$NTX tag $Bi ntx done
+$NTX tag $Ci pacman COW unix
+
+# Re-test above tags tests.
+TAGS=`$NTX tag`
+assert "$TAGS" "*soulfu*"
+assert "$TAGS" "*git*"
+assert "$TAGS" "*todo*"
+assert "$TAGS" "*ntx*"
+assert "$TAGS" "*pacman*"
+assert "$TAGS" "*COW*"
+assert "$TAGS" "*done*"
+assert "$TAGS" "*unix*"
+
+assert "`$NTX list todo`" "$Ai$TAB$Av"
+assert "`$NTX list done`" "$Bi$TAB$Bv"
+assert "`$NTX list unix`" "$Ai$TAB$Av
+$Ci$TAB$Cv"
+
+# Reset the tags back to normal for later tests.
+$NTX tag $Bi ntx todo
+$NTX tag $Ci pacman todo COW unix
 
 # Test altering a note - Edit A to be equal to b.
 ed_write "$B"
@@ -187,7 +208,21 @@ $Ci$TAB$Cv"
 assert "`$NTX list todo git`" "$Ai$TAB$Av"
 
 # Test deleting a note - Delete A from the set.
+$NTX rm $Ai
+
 # Re-test listings and tags.
+assert "`$NTX list`" "$Bi$TAB$Bv
+$Ci$TAB$Cv"
+assert "`$NTX list todo`" "$Bi$TAB$Bv
+$Ci$TAB$Cv"
+assert "`$NTX list git`" "No such tag: git"
+
+TAGS=`$NTX tag`
+assert "$TAGS" "*todo*"
+assert "$TAGS" "*ntx*"
+assert "$TAGS" "*pacman*"
+assert "$TAGS" "*COW*"
+assert "$TAGS" "*unix*"
 
 # Clean up after ourselves.
 rm -r $NTXROOT
