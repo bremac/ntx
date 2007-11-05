@@ -5,7 +5,7 @@ prefix=/usr/local
 bindir=$(prefix)/bin
 .PHONY=clean install test
 
-SOURCE=src/ntx.c src/hash_table.c src/lookup2.c
+SOURCE=src/ntx.c src/hash_table.c src/lookup2.c src/except.c
 SYSTEM=src/unix.c
 
 OBJECT=$(SOURCE:.c=.o) $(SYSTEM:.c=.o)
