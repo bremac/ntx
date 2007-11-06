@@ -2,13 +2,7 @@
 #include <stdio.h>
 #include "except.h"
 
-struct exception_context the_exception_context[1];
-
-void init_exception_context(struct exception_context *e)
-{
-  e->last  = NULL;
-  e->alloc = NULL;
-}
+struct exception_context the_exception_context[1] = {{NULL, NULL, 0}};
 
 void resource(void *r, void (*f)(void *))
 {
