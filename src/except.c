@@ -7,10 +7,12 @@ struct exception_context the_exception_context[1];
 void init_exception_context(struct exception_context *e)
 {
   e->last  = NULL;
+  e->alloc = NULL;
 }
 
 void resource(void *r, void (*f)(void *))
 {
+  /* Add a managed resource to the current state. */
   struct resource__state *res;
 
   if(!the_exception_context->last) {
@@ -23,26 +25,34 @@ void resource(void *r, void (*f)(void *))
 
   res->res  = r;
   res->rel  = f;
-  res->next = the_exception_context->last->alloc;
-  the_exception_context->last->alloc = res;
+  res->next = the_exception_context->alloc;
+  the_exception_context->alloc = res;
+  the_exception_context->last->resources++;
 }
 
 void release(void *r)
 {
-  /* Release a resource from the _current_ (not lexical) state. */
+  /* Release a resource from the current lexical state. */
   struct resource__state *last = NULL, *res;
+  struct exception__state *state;
+  unsigned int count;
 
   if(!the_exception_context->last) {
     fputs("ERROR: release called without a context.\n", stderr);
     exit(EXIT_FAILURE);
   }
 
-  for(res = the_exception_context->last->alloc;
-      res && res->res != r; last = res, res = res->next) ;
-  if(!res) throw(E_BADFREE, r);
+  res = the_exception_context->alloc;
+  for(state = the_exception_context->last; state; state = state->next) {
+    for(count = state->resources; count > 0 && res && res->res != r;
+        last = res, res = res->next) count--;
+    if(!res) throw(E_BADFREE, r);
+    if(res->res == r) break;
+  }
 
   if(last) last->next = res->next;
-  else the_exception_context->last->alloc = res->next;
+  else the_exception_context->alloc = res->next;
+  state->resources--; 
   res->rel(res->res);
   free(res);
 }
@@ -51,14 +61,16 @@ void throw(enum EXCEPTION_TYPE type, void *value)
 {
   /* Release everything allocated since the last try block began. */
   struct resource__state *temp, *res;
+  unsigned int count;
 
   if(!the_exception_context->last) {
     fputs("ERROR: Uncaught exception.\n", stderr);
     exit(EXIT_FAILURE);
   }
 
-  res = the_exception_context->last->alloc;
-  while(res) {
+  for(res = the_exception_context->alloc,
+      count = the_exception_context->last->resources;
+      count > 0 && res; count--) {
     res->rel(res->res);
     temp = res->next;
     free(res);

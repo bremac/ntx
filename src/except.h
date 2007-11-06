@@ -35,8 +35,9 @@ typedef struct {
 
 struct exception__state {
   exception_t *exception;
-  struct resource__state *alloc;
+  unsigned int resources;
   jmp_buf env;
+  struct exception__state *next;
 };
 
 struct resource__state {
@@ -47,6 +48,7 @@ struct resource__state {
 
 struct exception_context {
   struct exception__state *last;
+  struct resource__state *alloc;
   int caught;
 };
 
@@ -54,10 +56,10 @@ struct exception_context {
 
 #define try \
   { \
-    struct exception__state *exception__p, exception__s; \
+    struct exception__state exception__s; \
     int exception__i; \
-    exception__s.alloc = NULL; \
-    exception__p = the_exception_context->last; \
+    exception__s.resources = 0; \
+    exception__s.next = the_exception_context->last; \
     the_exception_context->last = &exception__s; \
     for (exception__i = 0; ; exception__i = 1) \
       if (exception__i) { \
@@ -69,7 +71,7 @@ struct exception_context {
           the_exception_context->caught = 0; \
         } \
         else the_exception_context->caught = 1; \
-        the_exception_context->last = exception__p; \
+        the_exception_context->last = exception__s.next; \
         break; \
       } \
       else exception__s.exception = e_addr; \
