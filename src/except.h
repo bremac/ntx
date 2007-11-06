@@ -35,6 +35,7 @@ typedef struct {
 
 struct exception__state {
   exception_t *exception;
+  struct resource__state *alloc;
   jmp_buf env;
 };
 
@@ -46,7 +47,6 @@ struct resource__state {
 
 struct exception_context {
   struct exception__state *last;
-  struct resource__state  *alloc;
   int caught;
 };
 
@@ -56,6 +56,7 @@ struct exception_context {
   { \
     struct exception__state *exception__p, exception__s; \
     int exception__i; \
+    exception__s.alloc = NULL; \
     exception__p = the_exception_context->last; \
     the_exception_context->last = &exception__s; \
     for (exception__i = 0; ; exception__i = 1) \
@@ -93,8 +94,8 @@ struct exception_context {
 extern struct exception_context the_exception_context[1];
 
 void init_exception_context(struct exception_context *e);
-void e_register(void *r, void (*f)(void *));
-void e_free(void *r);
+void resource(void *r, void (*f)(void *));
+void release(void *r);
 void throw(enum EXCEPTION_TYPE t, void *value);
 
 #endif /* CEXCEPT_H */
