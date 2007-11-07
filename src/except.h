@@ -26,7 +26,9 @@ exceptions to single-threaded programs. For the original version, see
 #include <stdlib.h>
 #include <setjmp.h>
 
-enum EXCEPTION_TYPE { E_NOMEM = 0, E_BADFREE, E_INVAL, E_OVRFLO, E_USER };
+enum EXCEPTION_TYPE {
+  E_NONE = 0, E_NOMEM, E_BADFREE, E_INVAL, E_OVRFLO, E_USER
+};
 
 typedef struct {
   enum EXCEPTION_TYPE type;
@@ -35,7 +37,7 @@ typedef struct {
 
 struct exception__state {
   exception_t *exception;
-  unsigned int resources;
+  volatile unsigned int resources;
   jmp_buf env;
   struct exception__state *next;
 };
@@ -49,6 +51,7 @@ struct resource__state {
 struct exception_context {
   struct exception__state *last;
   struct resource__state *alloc;
+  exception_t passthrough;
   int caught;
 };
 
@@ -71,6 +74,10 @@ struct exception_context {
           the_exception_context->caught = 0; \
         } \
         else the_exception_context->caught = 1; \
+        the_exception_context->last->exception->type = \
+               the_exception_context->passthrough.type; \
+        the_exception_context->last->exception->value = \
+               the_exception_context->passthrough.value; \
         the_exception_context->last = exception__s.next; \
         break; \
       } \
@@ -79,6 +86,13 @@ struct exception_context {
   if (!the_exception_context->caught) { } \
   else
 
+/* The exception__state is declared volatile because the resources    */
+/* member is incremented or decremented to track resource usage for   */
+/* automatic resource management. Otherwise, modifying its value via  */
+/* from another state means its value is undefined after a longjmp.   */
+/* We use the passthrough for the same reason - to ensure             */
+/* well-defined behaviour through the longjmp call.                   */
+/*                                                                    */
 /* Try ends with if(), and Catch begins and ends with else.  This     */
 /* ensures that the Try/Catch syntax is really the same as the        */
 /* if/else syntax.                                                    */

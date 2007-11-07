@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include "except.h"
 
-struct exception_context the_exception_context[1] = {{NULL, NULL, 0}};
+/* Modify this to suit your context model. Be sure to initialize it. */
+struct exception_context the_exception_context[1] = {{NULL, NULL, {E_NONE, NULL}, 0}};
 
 void resource(void *r, void (*f)(void *))
 {
@@ -71,7 +72,7 @@ void throw(enum EXCEPTION_TYPE type, void *value)
     res = temp;
   }
 
-  the_exception_context->last->exception->type  = type;
-  the_exception_context->last->exception->value = value;
+  the_exception_context->passthrough.type  = type;
+  the_exception_context->passthrough.value = value;
   longjmp(the_exception_context->last->env, 1);
 }
