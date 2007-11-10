@@ -78,10 +78,10 @@ function die {
 }
 
 function assert {
-  if [[ $1 = $2 ]]; then
+  if [[ $2 = $3 ]]; then
     return
   else
-    echo "Assertion failed: '$1' = '$2'"
+    echo "Assertion $1 failed: '$2' = '$3'"
     die
   fi
 }
@@ -92,73 +92,74 @@ ed_write "$A"
 V=`_ntx $EDIT add soulfu git todo`
 Av="Create a community soulfu git repository for the *nix p..."
 Ai=`echo $V | cut -b 1-4`
-assert "`echo $V | cut -b 6-`" "$Av"
+assert add-1 "`echo $V | cut -b 6-`" "$Av"
 
 ed_write "$B"
 V=`_ntx $EDIT add ntx todo`
 Bv="Add deletion support to ntx via a tagged/ directory."
 Bi=`echo $V | cut -b 1-4`
-assert "`echo $V | cut -b 6-`" "$Bv"
+assert add-2 "`echo $V | cut -b 6-`" "$Bv"
 
 ed_write "$C"
 V=`_ntx $EDIT add pacman COW todo`
 Cv="Complete the Copy-On-Write pacman pseudo-FS/database."
 Ci=`echo $V | cut -b 1-4`
-assert "`echo $V | cut -b 6-`" "$Cv"
+assert add-3 "`echo $V | cut -b 6-`" "$Cv"
 
 # Test listing notes - FIFO ordering is assumed.
-assert "`$NTX list`" "$Ai$TAB$Av
+assert list-1 "`$NTX list`" "$Ai$TAB$Av
 $Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list todo`" "$Ai$TAB$Av
+assert list-2 "`$NTX list todo`" "$Ai$TAB$Av
 $Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list todo git`" "$Ai$TAB$Av"
-assert "`$NTX list pacman ntx`" ""
+assert list-3 "`$NTX list todo git`" "$Ai$TAB$Av"
+assert list-4 "`$NTX list pacman ntx`" ""
 
 # Test listing tags. Unfortunately, can't guarantee the order.
 TAGS=`$NTX tag`
-assert "$TAGS" "*soulfu*"
-assert "$TAGS" "*git*"
-assert "$TAGS" "*todo*"
-assert "$TAGS" "*ntx*"
-assert "$TAGS" "*pacman*"
-assert "$TAGS" "*COW*"
+assert tag-1a "$TAGS" "*soulfu*"
+assert tag-1b "$TAGS" "*git*"
+assert tag-1c "$TAGS" "*todo*"
+assert tag-1d "$TAGS" "*ntx*"
+assert tag-1e "$TAGS" "*pacman*"
+assert tag-1f "$TAGS" "*COW*"
 
 # Test per-tag listing. Here, we _can_ test for a definite set, and order.
-assert "`$NTX tag $Ai`" "soulfu
+assert pertag-1 "`$NTX tag $Ai`" "soulfu
 git
 todo"
-assert "`$NTX tag $Bi`" "ntx
+assert pertag-2 "`$NTX tag $Bi`" "ntx
 todo"
-assert "`$NTX tag $Ci`" "pacman
+assert pertag-3 "`$NTX tag $Ci`" "pacman
 COW
 todo"
 
 # Test per-tag retagging. Again, we test for a defined set and order.
 $NTX tag $Ai soulfu git todo unix
-assert "`$NTX tag $Ai`" "soulfu
+
+assert retag-1 "`$NTX tag $Ai`" "soulfu
 git
 todo
 unix"
 $NTX tag $Ci pacman todo COW unix
-assert "`$NTX tag $Ci`" "pacman
+assert retag-2 "`$NTX tag $Ci`" "pacman
 todo
 COW
 unix"
 
 # Re-test above tag tests.
 TAGS=`$NTX tag`
-assert "$TAGS" "*soulfu*"
-assert "$TAGS" "*git*"
-assert "$TAGS" "*todo*"
-assert "$TAGS" "*ntx*"
-assert "$TAGS" "*pacman*"
-assert "$TAGS" "*COW*"
-assert "$TAGS" "*unix*"
+assert retag-3a "$TAGS" "*soulfu*"
+assert retag-3b "$TAGS" "*git*"
+assert retag-3c "$TAGS" "*todo*"
+assert retag-3d "$TAGS" "*ntx*"
+assert retag-3e "$TAGS" "*pacman*"
+assert retag-3f "$TAGS" "*COW*"
+assert retag-3g "$TAGS" "*unix*"
 
 # Re-test listing notes for unix.
-assert "`$NTX list unix`" "$Ai$TAB$Av
+assert retag-4 "`$NTX list unix`" "$Ai$TAB$Av
 $Ci$TAB$Cv"
 
 # Test removing a tag and altering one.
@@ -167,18 +168,18 @@ $NTX tag $Ci pacman COW unix
 
 # Re-test above tags tests.
 TAGS=`$NTX tag`
-assert "$TAGS" "*soulfu*"
-assert "$TAGS" "*git*"
-assert "$TAGS" "*todo*"
-assert "$TAGS" "*ntx*"
-assert "$TAGS" "*pacman*"
-assert "$TAGS" "*COW*"
-assert "$TAGS" "*done*"
-assert "$TAGS" "*unix*"
+assert retag-5a "$TAGS" "*soulfu*"
+assert retag-5b "$TAGS" "*git*"
+assert retag-5c "$TAGS" "*todo*"
+assert retag-5d "$TAGS" "*ntx*"
+assert retag-5e "$TAGS" "*pacman*"
+assert retag-5f "$TAGS" "*COW*"
+assert retag-5g "$TAGS" "*done*"
+assert retag-5h "$TAGS" "*unix*"
 
-assert "`$NTX list todo`" "$Ai$TAB$Av"
-assert "`$NTX list done`" "$Bi$TAB$Bv"
-assert "`$NTX list unix`" "$Ai$TAB$Av
+assert retag-6 "`$NTX list todo`" "$Ai$TAB$Av"
+assert retag-7 "`$NTX list done`" "$Bi$TAB$Bv"
+assert retag-8 "`$NTX list unix`" "$Ai$TAB$Av
 $Ci$TAB$Cv"
 
 # Reset the tags back to normal for later tests.
@@ -188,40 +189,40 @@ $NTX tag $Ci pacman todo COW unix
 # Test altering a note - Edit A to be equal to b.
 ed_write "$B"
 V=`_ntx $EDIT edit $Ai`
-assert "`echo $V | cut -b 6-`" "$Bv"
+assert edit-1 "`echo $V | cut -b 6-`" "$Bv"
 
 # Re-test to ensure the index and tags have changed.
-assert "`$NTX list`" "$Ai$TAB$Bv
+assert edit-2 "`$NTX list`" "$Ai$TAB$Bv
 $Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list todo git`" "$Ai$TAB$Bv"
+assert edit-3 "`$NTX list todo git`" "$Ai$TAB$Bv"
 
 # Test resetting A to itself via stdin.
 V=`echo $A | $NTX edit $Ai`
-assert "`echo $V | cut -b 6-`" "$Av"
+assert edit-4 "`echo $V | cut -b 6-`" "$Av"
 
 # Re-test to ensure the index and tags have changed.
-assert "`$NTX list`" "$Ai$TAB$Av
+assert edit-5 "`$NTX list`" "$Ai$TAB$Av
 $Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list todo git`" "$Ai$TAB$Av"
+assert edit-6 "`$NTX list todo git`" "$Ai$TAB$Av"
 
 # Test deleting a note - Delete A from the set.
 $NTX rm $Ai
 
 # Re-test listings and tags.
-assert "`$NTX list`" "$Bi$TAB$Bv
+assert del-1 "`$NTX list`" "$Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list todo`" "$Bi$TAB$Bv
+assert del-2 "`$NTX list todo`" "$Bi$TAB$Bv
 $Ci$TAB$Cv"
-assert "`$NTX list git`" ""
+assert del-3 "`$NTX list git`" ""
 
 TAGS=`$NTX tag`
-assert "$TAGS" "*todo*"
-assert "$TAGS" "*ntx*"
-assert "$TAGS" "*pacman*"
-assert "$TAGS" "*COW*"
-assert "$TAGS" "*unix*"
+assert del-4a "$TAGS" "*todo*"
+assert del-4b "$TAGS" "*ntx*"
+assert del-4c "$TAGS" "*pacman*"
+assert del-4d "$TAGS" "*COW*"
+assert del-4e "$TAGS" "*unix*"
 
 # Clean up after ourselves.
 rm -r $NTXROOT
