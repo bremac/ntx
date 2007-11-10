@@ -91,6 +91,6 @@ unsigned int gzf_putl(gzFile *f, char *buf)
 char *gzf_getl(gzFile *f, void *buf, unsigned int max)
 {
   char *b = gzgets(f, buf, max);
-  if(b == Z_NULL) throw(E_FINVAL, f);
+  if(b == Z_NULL && !gzeof(f)) throw(E_FINVAL, f);
   return b;
 }

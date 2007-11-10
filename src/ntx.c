@@ -311,8 +311,8 @@ int cmp_val(void *a, void *b)
 #undef  Cabv
 }
 
-/* XXX: gzgets/hasht_* error checking. */
-int ntx_list(char **tags, unsigned int tagc)
+/* XXX: hasht_* error checking. */
+void ntx_list(char **tags, unsigned int tagc)
 {
   char line[SUMMARY_WIDTH + PADDING_WIDTH];
   gzFile *f;
@@ -321,25 +321,24 @@ int ntx_list(char **tags, unsigned int tagc)
   if(tagc > 127) die("Too many (more than 127) tags.\n");
 
   if(tagc == 0) { /* No tags specified, open the index. */
-    f = gzopen(INDEX_FILE, "r");
-    if(!f) return 0;
+    f = gzf_open(INDEX_FILE, "r");
 
     /* Duplicate each line from the index to STDOUT. */
-    while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
+    while(gzf_getl(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
+    release(f);
   } else if(tagc == 1) { /* No need to calculate the intersection. */
     char name[FILE_MAX];
 
-    if(!snprintf(name, FILE_MAX, TAGS_DIR"/%s", *tags)) return -1;
-
-    f = gzopen(name, "r");
-    if(!f) die("Unable to open %s.\n", name);
+    seprintf(name, FILE_MAX, TAGS_DIR"/%s", *tags);
+    f = gzf_open(name, "r");
 
     /* Duplicate each line from the index to STDOUT. */
     while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
+    release(f);
   } else { /* Calculate the union of the sets from the tag files. */
     char *name;
     hash_t *table;
-    struct fstats *files = malloc(sizeof(struct fstats) * tagc);
+    struct fstats *files = alloc(sizeof(struct fstats) * tagc);
     unsigned int i, len, exists;
     long int size;
 
@@ -347,8 +346,8 @@ int ntx_list(char **tags, unsigned int tagc)
     /* Stat and load the files into the buffers for sorting. */
     for(i = 0; i < tagc; i++) {
       len = 6 + strlen(tags[i]);
-      name = malloc(len);
-      if(!snprintf(name, len, TAGS_DIR"/%s", tags[i])) return -1;
+      name = alloc(len);
+      seprintf(name, len, TAGS_DIR"/%s", tags[i]);
 
       if((size = ntx_flen(name)) == -1) die("Unable to open %s.\n", name);
       files[i].path = name;
@@ -358,38 +357,33 @@ int ntx_list(char **tags, unsigned int tagc)
     qsort(files, tagc, sizeof(struct fstats), ntx_sortstat);
 
     /* Now, load the first, and check it with each hash. */
-    f = gzopen(files[0].path, "r"); /* XXX: Error checking. */
-    table = hasht_init(120, free, hash_line, hash_val, cmp_line, cmp_val);
-
-    if(!table) return -1;
+    f = gzf_open(files[0].path, "r");
+    table = hasht_init(120, release, hash_line, hash_val, cmp_line, cmp_val);
+    if(!table) return;
 
     /* Read each line in the index into the hash. */
-    while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
-      name = malloc(strlen(line)+2); /* Save room for the ref and null. */
-      if(!name) return -1;
+    while(gzf_getl(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
+      name = alloc(strlen(line)+2); /* Save room for the ref and null. */
       name[0] = 1;
       strcpy(name+1, line);
-      name = hasht_add(table, name);
-      if(name) {
-        puts(name);
-        free(name);
-      }
+      if((name = hasht_add(table, name))) release(name);
     }
-    gzclose(f);
+    release(f);
    
     /* Load and check each hash against this one, incrementing found refs. *
      * We will abort if exists == 0, meaning none were found.              */
     for(i = 1; i < tagc; i++) {
       exists = 0;
-      f = gzopen(files[i].path, "r"); /* XXX: Error checking. */
+      f = gzf_open(files[i].path, "r");
       while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
         if((name = hasht_get(table, line))) {
           name[0]++; /* Increment the refcount. */
           exists = 1;
         }
       }
-      gzclose(f);
-      if(exists == 0) die("No notes exist in the intersection of those tags.\n");
+      release(f);
+      if(exists == 0) 
+        die("No notes exist in the intersection of those tags.\n");
     }
 
     /* Print all of the tags which had 'tagc' references. */
@@ -398,13 +392,10 @@ int ntx_list(char **tags, unsigned int tagc)
 
     /* Clean up the hash and fstats structures. */
     hasht_free(table);
-    free(files);
+    release(files);
   }
-
-  return 0;
 }
 
-/* XXX: fgets error checking. */
 void ntx_put(char *id)
 {
   FILE *f;
