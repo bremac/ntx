@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <zlib.h>
 #include "except.h"
@@ -31,6 +33,25 @@ void *ralloc(void *buf, unsigned int size)
   void *buf = realloc(buf, size);
   if(!buf) throw(E_NOMEM, size);
   return buf;
+}
+
+char *strdupe(char *buf)
+{
+  char *b = strdup(buf);
+  if(!b) throw(E_NOMEM, strlen(buf));
+  return b;
+}
+
+unsigned int seprintf(char *buf, unsigned int max, char *fmt, ...)
+{
+  va_list args;
+  int len;
+
+  va_start(args, fmt);
+  len = vsnprintf(buf, max, fmt, args);
+  va_end(args);
+  if(len < 0) throw(E_INVAL, NULL); /* XXX: Detail? */
+  return (unsigned int)len;
 }
 
 gzFile *gzf_open(char *file, char *mode)
