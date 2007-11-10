@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 #include <zlib.h>
+#include "except.h"
+#include "exc_io.h"
 #include "hash_table.h"
 
 /* Buffer size definitions. */
@@ -29,7 +31,9 @@ n_dir ntx_dopen(char *dir);
 char *ntx_dread(n_dir dir);
 int ntx_dclose(n_dir dir);
 
-/* Utility/Refactored functions. */
+
+/* XXX: Update functions should write and rename a temporary file. */
+
 void die(char *fmt, ...)
 {
   va_list args;
@@ -41,22 +45,18 @@ void die(char *fmt, ...)
   exit(EXIT_FAILURE);
 }
 
-/* XXX: Update functions should write and rename a temporary file. */
-
 /* 'buf' should be SUMMARY_WIDTH + 2 bytes long. */
-int ntx_summary(char *file, char *buf)
+void ntx_summary(char *file, char *buf)
 {
-  FILE *f = fopen(file, "r");
+  FILE *f = raw_open(file, "r");
   char *temp;
 
-  if(!f) return -1;
-
-  if(!fgets(buf, SUMMARY_WIDTH+2, f)) return -2;
-  fclose(f);
+  temp = raw_getl(f, buf, SUMMARY_WIDTH+2);
+  release(f);
+  if(!temp || strlen(temp) == 0) throw(E_INVAL, file);
 
   /* Set a null at the maximum position to ensure we don't overdo it. */
-  temp = strchr(buf, '\n');
-  if(temp) temp[1] = '\0';
+  if((temp = strchr(buf, '\n'))) temp[1] = '\0';
   else {
     unsigned int end = strlen(buf);
 
@@ -65,30 +65,25 @@ int ntx_summary(char *file, char *buf)
     buf[end-2] = '.';
     buf[end-1] = '\n';
   }
-
-  return 1;
 }
 
 char *ntx_buffer(char *file)
 {
-  char *bbuf = NULL;
   unsigned int blen = BUFFER_MAX, bpos = 0;
   unsigned int len;
-  gzFile *f;
-
-  if(!(f = gzopen(file, "r"))) return NULL;
-  if(!(bbuf = malloc(blen))) return NULL;
+  gzFile *f = gzf_open(file, "r");
+  char *bbuf = alloc(blen);
 
   /* Read the entire file into the buffer. */
-  while((len = gzread(f, bbuf + bpos, BUFFER_MAX))) {
+  while((len = gzf_read(f, bbuf + bpos, BUFFER_MAX))) {
     bpos += len;
     if((blen - bpos - 1) < BUFFER_MAX) { /* The extra space is for the \0. */
       blen += BUFFER_MAX;
-      if(!(bbuf = realloc(bbuf, blen))) return NULL;
+      bbuf = ralloc(bbuf, blen);
     }
   }
   bbuf[bpos] = '\0'; /* NULL-terminate the input. */
-  gzclose(f);
+  release(f);
   return bbuf;
 }
 
@@ -99,7 +94,7 @@ char *ntx_tagstolist(char *id, char **tags)
 
   /* Precompute the length of the tags. */
   for(cur = tags; *cur; cur++) len += strlen(*cur) + 1;
-  if(!(list = malloc(len))) return NULL;
+  list = alloc(len);
 
   strncpy(list, id, 4);
   list[4] = '\t';
@@ -125,86 +120,72 @@ char *ntx_tagstolist(char *id, char **tags)
  */
 int ntx_replace(char *file, char *id, char *fix)
 {
-  char *buf;
   char *ptr, *end;
-  unsigned int written;
-  gzFile *f;
-
-  if(!(buf = ntx_buffer(file))) return -1;
-  if(!(f = gzopen(file, "w"))) return -2;
+  unsigned int written, found = 0;
+  char *buf = ntx_buffer(file);
+  gzFile *f = gzf_open(file, "w");
 
   /* Parse the buffer contents to find the given position. */
   for(ptr = buf; *ptr; ptr = end+1) {
-    end = strchr(ptr, '\n');
+    if(!(end = strchr(ptr, '\n'))) throw(E_FINVAL, file);
     if(strncmp(id, ptr, 4) == 0) {
-      if(fix) gzputs(f, fix);
-    } else {
-      if(end) gzwrite(f, ptr, end-ptr+1);
-      else gzputs(f, ptr);
-    }
-    if(!end) break;
+      if(fix) gzf_putl(f, fix);
+      found = 1;
+    } else gzf_write(f, ptr, end-ptr+1);
   }
   written = gztell(f);
-  gzclose(f);
-  free(buf);
+  release(f);
+  release(buf);
 
   if(written == 0) remove(file); /* Remove the file if it is empty. */
-
-  return 1;
+  return found;
 }
 
 char *ntx_find(char *file, char *id)
 {
-  char *buf;
+  char *buf = ntx_buffer(file);
   char *ptr, *end;
-
-  if(!(buf = ntx_buffer(file))) return NULL;
 
   /* Parse the buffer contents to find the given position. */
   for(ptr = buf; *ptr; ptr = end + 1) {
-    end = strchr(ptr, '\n');
+    if(!(end = strchr(ptr, '\n'))) throw(E_FINVAL, file);
     if(strncmp(id, ptr, 4) == 0) {
       *end = '\0';
-      if(!(ptr = strdup(ptr))) return NULL;
-      free(buf);
+      ptr = strdupe(ptr);
+      release(buf);
       return ptr;
     }
-    if(!end) break; /* This isn't normal, and shouldn't occur. */
   }
-  free(buf);
 
+  release(buf);
   return NULL;
 }
 
-int ntx_append(char *file, char *str)
+void ntx_append(char *file, char *str)
 {
-  gzFile *f = gzopen(file, "a");
-
-  if(!f) return -1;
-  if(gzputs(f, str) == -1) return -2;
-  gzclose(f);
-
-  return 1;
+  gzFile *f = gzf_open(file, "a");
+  gzf_putl(f, str);
+  release(f);
 }
 
-
 /* Front-end functions, user interaction. */
-int ntx_add(char **tags)
+void ntx_add(char **tags)
 {
   char file[FILE_MAX], note[SUMMARY_WIDTH + PADDING_WIDTH];
   char **ptr, *tmp;
   unsigned int num;
-  int ret;
+  exception_t exc;
 
   srand(time(NULL));
   num = rand() & 0xffff;
 
   while(1) {
-    FILE *nout;
+    FILE *nout = NULL;
 
-    if(!snprintf(file, FILE_MAX, NOTES_DIR"/%04x", num)) return -1;
-    if(!(nout = fopen(file, "r"))) break;
-    fclose(nout);
+    seprintf(file, FILE_MAX, NOTES_DIR"/%04x", num);
+    try nout = raw_open(file, "r");
+    catch(exc) if(exc.type == E_FACCESS) break;
+    release(nout);
     num = (num + 1) & 0xffff;
   }
 
@@ -212,10 +193,14 @@ int ntx_add(char **tags)
   ntx_editor(file);
 
   /* Get the summary line, and write it in abbreviated form to each index. */
-  if((ret = ntx_summary(file, note+5)) < 1) {
-    fputs("No new note was recorded.\n", stderr);
-    if(ret == -2) remove(file);
-    return 0;
+  try ntx_summary(file, note+5);
+  catch(exc) {
+    if((exc.type == E_FACCESS || exc.type == E_INVAL) &&
+       strcmp(file, exc.value) == 0) {
+      fputs("No new note was recorded.\n", stderr);
+      remove(file);
+      exit(EXIT_SUCCESS);
+    } else throw(exc.type, exc.value);
   }
 
   /* Fill in the identification information. */
@@ -223,40 +208,37 @@ int ntx_add(char **tags)
   note[4] = '\t';
 
   for(ptr = tags; *ptr != NULL; ptr++) {
-    if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *ptr)) return -1;
-    if(ntx_append(file, note) < 1) die("Unable to append to %s.\n", file);
+    seprintf(file, FILE_MAX, TAGS_DIR"/%s", *ptr);
+    ntx_append(file, note);
   }
 
   /* Add the new note to the base index. */
-  if(ntx_append(INDEX_FILE, note) < 1) die("Unable to append to index.\n");
+  ntx_append(INDEX_FILE, note);
 
   /* Append the tags to the backreference file. */
-  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", note)) return -1;
-
-  if(!(tmp = ntx_tagstolist(note, tags))) return -1;
-  if(ntx_append(file, tmp) < 1) die("Unable to append to %s.\n", file);
-  free(tmp);
+  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", note);
+  tmp = ntx_tagstolist(note, tags);
+  ntx_append(file, tmp);
+  release(tmp);
 
   /* Dump the summary to STDOUT as confirmation that everything went well. */
   fputs(note, stdout);
-
-  return 0;
 }
 
-int ntx_edit(char *id)
+void ntx_edit(char *id)
 {
   char file[FILE_MAX], head[SUMMARY_WIDTH + 2];
   char note[SUMMARY_WIDTH + PADDING_WIDTH];
 
-  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
+  seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
 
-  /* Check that the note exists first. */
-  if(ntx_summary(file, head) < 1) die("Unable open %s.\n", file);
+  /* Check that the note exists first, then edit it. */
+  ntx_summary(file, head);
   ntx_editor(file);
 
   /* See if the header has changed; If so, rewrite the headers. */
   /* XXX: If we can't reread the file, do we need to take action? */
-  if(ntx_summary(file, note+5) < 1) die("Unable to reread %s.\n", file);
+  ntx_summary(file, note+5);
   if(strcmp(head, note+5)) {
     char *tags, *cur, *ptr;
 
@@ -264,7 +246,7 @@ int ntx_edit(char *id)
     strncpy(note, id, 4);
     note[4] = '\t';
 
-    if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+    seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
     if(!(tags = ntx_find(file, id)))
       die("Unable to locate note %s in %s.\n", id, file);
 
@@ -272,22 +254,20 @@ int ntx_edit(char *id)
     while((ptr = strchr(cur, ';'))) {
       *ptr = '\0';
       /* Update the tags - O(n) search through the affected indices. */
-      if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", cur)) return -1;
-      if(ntx_replace(file, id, note) < 1)
-        die("Problem replacing info for note %s in %s.\n", id, file);
+      seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
+      if(ntx_replace(file, id, note) == 0)
+        die("Unable to locate note %s in %s.\n", id, file);
       cur = ptr + 1;
     }
-    free(tags);
+    release(tags);
 
     /* Update the index file. */
-    if(ntx_replace(INDEX_FILE, id, note) < 1)
-      die("Problem replacing info for note %s in index.\n", file);
+    if(ntx_replace(INDEX_FILE, id, note) == 0)
+      die("Unable to locate note %s in %s.\n", id, file);
   }
 
   /* Dump the summary to STDOUT as confirmation that everything went well. */
   fputs(note, stdout);
-
-  return 0;
 }
 
 
@@ -425,25 +405,25 @@ int ntx_list(char **tags, unsigned int tagc)
 }
 
 /* XXX: fgets error checking. */
-int ntx_put(char *id)
+void ntx_put(char *id)
 {
   FILE *f;
   char file[FILE_MAX];
   char buffer[BUFFER_MAX];
 
-  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(!(f = fopen(file, "r"))) die("Unable to open %s.\n", id);
+  seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
+  f = raw_open(file, "r");
 
   /* Duplicate each line from the note to STDOUT. */
-  while(fgets(buffer, BUFFER_MAX, f)) fputs(buffer, stdout);
-  return 0;
+  while(raw_getl(f, buffer, BUFFER_MAX)) fputs(buffer, stdout);
+  release(f);
 }
 
-int ntx_del(char *id)
+void ntx_del(char *id)
 {
   char file[FILE_MAX], *buf, *ptr, *cur;
 
-  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
 
   /* Find the line describing the tags of the given ID. */
   if(!(buf = ntx_find(file, id)))
@@ -453,30 +433,28 @@ int ntx_del(char *id)
   while((ptr = strchr(cur, ';'))) {
     *ptr = '\0';
     /* Delete the tags - O(n) search through the affected indices. */
-    if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", cur)) return -1;
-    if(ntx_replace(file, id, NULL) < 1)
+    seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
+    if(ntx_replace(file, id, NULL) == 0)
       die("Problem removing info for note %s from %s.\n", id, file);
     cur = ptr + 1;
   }
-  free(buf);
+  release(buf);
 
   /* Remove it from the index. */
-  if(ntx_replace(INDEX_FILE, id, NULL) < 1)
+  if(ntx_replace(INDEX_FILE, id, NULL) == 0)
     die("Problem removing info for note %s from index.\n", id);
 
   /* Remove the backreference. */
-  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-  if(ntx_replace(file, id, NULL) < 1)
+  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
+  if(ntx_replace(file, id, NULL) == 0)
     die("Problem removing info for note %s from %s.\n", id, file);
 
   /* Remove the note itself from NOTES_DIR. */
-  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
+  seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
   if(remove(file) != 0) die("Unable to remove note %s.\n", id);
-
-  return 0;
 }
 
-int ntx_tags(char *id)
+void ntx_tags(char *id)
 {
   if(!id) { /* List all tags in the database. */
     char *name;
@@ -489,7 +467,7 @@ int ntx_tags(char *id)
   } else { /* List all tags of a note. */
     char file[FILE_MAX], *buf, *ptr, *cur;
 
-    if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+    seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
     if(!(buf = ntx_find(file, id)))
       die("Unable to locate note %s in %s.\n", id, file);
 
@@ -499,58 +477,55 @@ int ntx_tags(char *id)
       puts(cur);
       cur = ptr + 1;
     }
-    free(buf);
+    release(buf);
   }
-
-  return 0;
 }
 
-int ntx_retag(char *id, char **tags)
+void ntx_retag(char *id, char **tags)
 {
   char file[FILE_MAX], desc[SUMMARY_WIDTH + PADDING_WIDTH];
   char *tmp, *next, *orig, **cur;
 
   /* Get the summary in case we need to write it. */
-  if(!snprintf(file, FILE_MAX, NOTES_DIR"/%s", id)) return -1;
-  if(ntx_summary(file, desc+5) < 1) die("Unable to read %s.\n", file);
+  seprintf(file, FILE_MAX, NOTES_DIR"/%s", id); 
+  ntx_summary(file, desc+5);
 
   /* Fill in the identification information. */
   strncpy(desc, id, 4);
   desc[4] = '\t';
 
   /* Read in the original listing of tags for this file. */
-  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
+  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
   if(!(orig = ntx_find(file, id)))
     die("Unable to locate note %s in %s.\n", id, file);
 
   /* Add any tags which don't yet exist. */
   for(cur = tags; *cur; cur++) {
     if(!strstr(orig, *cur)) { /* Add the tag to the file. */
-      if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur)) return -1;
-      if(!ntx_append(file, desc)) die("Unable to append to %s.\n", file);
+      seprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur);
+      ntx_append(file, desc);
     }
   }
-   
+
   /* Remove any tags which don't exist any more. */
   for(tmp = orig+5; (next = strchr(tmp, ';')); tmp = next + 1) {
     *next = '\0';
     for(cur = tags; *cur; cur++) if(strcmp(*cur, tmp) == 0) break;
 
     if(!*cur) { /* Remove any tags we didn't find. */
-      if(!snprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp)) return -1;
-      if(ntx_replace(file, id, NULL) < 1)
-        die("Problem removing info for note %s from %s.\n", id, file);
+      seprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp);
+      if(ntx_replace(file, id, NULL) == 0)
+        die("Unable to locate note %s in %s.\n", id, file);
     }
   }
 
   /* Update the backreference with the new set of tags. */
   tmp = ntx_tagstolist(id, tags);
-  if(!snprintf(file, FILE_MAX, REFS_DIR"/%.2s", id)) return -1;
-  if(ntx_replace(file, id, tmp) < 1)
-    die("Problem updating info for note %s in %s.\n", id, file);
-  free(tmp);
+  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
+  if(ntx_replace(file, id, tmp) == 0)
+    die("Unable to locate note %s in %s.\n", id, file);
 
-  return 0;
+  release(tmp);
 }
 
 void ntx_usage(int retcode)
@@ -581,32 +556,41 @@ void ntx_usage(int retcode)
   exit(retcode);
 }
 
+/* Very few arguments, so we use a hand-written parser. */
 int main(int argc, char **argv)
 {
-  /* Very few arguments, so we use a hand-written parser. */
-  if(argc < 2) ntx_usage(EXIT_FAILURE);
+  exception_t exc;
 
+  atexit(release_all);
+
+  if(argc < 2) ntx_usage(EXIT_FAILURE);
   if(!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))
     ntx_usage(EXIT_SUCCESS);
 
   /* Change to/create our root directory. */
   ntx_homedir(TAGS_DIR, REFS_DIR, NOTES_DIR, NULL);
 
-  if(!strcmp(argv[1], "add") && argc >= 3) {
-    if(ntx_add(argv+2) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "edit") && argc == 3) {
-    if(ntx_edit(argv[2]) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "list") && argc >= 2) {
-    if(ntx_list(argv+2, argc - 2) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "put") && argc == 3) {
-    if(ntx_put(argv[2]) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "rm") && argc == 3) {
-    if(ntx_del(argv[2]) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "tag") && argc > 3) {
-    if(ntx_retag(argv[2], argv+3) != 0) die("Unknown execution failure.\n");
-  } else if(!strcmp(argv[1], "tag") && (argc == 2 || argc == 3)) {
-    if(ntx_tags(argv[2]) != 0) die("Unknown execution failure.\n");
-  } else ntx_usage(EXIT_FAILURE);
-
+  try {
+    if(!strcmp(argv[1], "add") && argc >= 3)       ntx_add(argv+2);
+    else if(!strcmp(argv[1], "edit") && argc == 3) ntx_edit(argv[2]);
+    else if(!strcmp(argv[1], "list") && argc >= 2) ntx_list(argv+2, argc - 2);
+    else if(!strcmp(argv[1], "put") && argc == 3)  ntx_put(argv[2]);
+    else if(!strcmp(argv[1], "rm") && argc == 3)   ntx_del(argv[2]);
+    else if(!strcmp(argv[1], "tag") && argc > 3)   ntx_retag(argv[2], argv+3);
+    else if(!strcmp(argv[1], "tag") && (argc == 2 || argc == 3))
+                                                   ntx_tags(argv[2]);
+    else ntx_usage(EXIT_FAILURE);
+  } catch(exc) {
+    switch(exc.type) {
+      case E_FINVAL:  die("Invalid file accessed.\n");
+      case E_INVAL:   die("Invalid data accessed.\n");
+      case E_FACCESS: die("Unable to open %s.\n", exc.value);
+      case E_NOMEM:   die("Unable to allocate %d bytes.\n", (int)exc.value);
+      case E_BADFREE: die("Double free of %d.\n", (int)exc.value);
+      case E_NONE:
+      case E_USER:    break;
+    }
+    /* TODO */
+  }
   return EXIT_SUCCESS;
 }
