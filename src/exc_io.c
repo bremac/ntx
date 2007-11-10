@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <zlib.h>
 #include "except.h"
 
@@ -10,11 +11,11 @@ FILE *raw_open(char *file, char *mode)
 {
   FILE *f = fopen(file, mode);
   if(!f) throw(E_FACCESS, file);
-  resource(f, fclose);
+  resource(f, (resource_handler)fclose);
   return f;
 }
 
-unsigned int raw_getl(FILE *f, char *buf, unsigned int max)
+char* raw_getl(FILE *f, char *buf, unsigned int max)
 {
   char *b = fgets(buf, max, f);
   if(!b && ferror(f) != 0) throw(E_FINVAL, f);
@@ -24,21 +25,21 @@ unsigned int raw_getl(FILE *f, char *buf, unsigned int max)
 void *alloc(unsigned int size)
 {
   void *buf = malloc(size);
-  if(!buf) throw(E_NOMEM, size);
+  if(!buf) throw(E_NOMEM, (void*)size);
   return buf;
 }
 
 void *ralloc(void *buf, unsigned int size)
 {
-  void *buf = realloc(buf, size);
-  if(!buf) throw(E_NOMEM, size);
-  return buf;
+  void *tmp = realloc(buf, size);
+  if(!tmp) throw(E_NOMEM, (void*)size);
+  return tmp;
 }
 
 char *strdupe(char *buf)
 {
   char *b = strdup(buf);
-  if(!b) throw(E_NOMEM, strlen(buf));
+  if(!b) throw(E_NOMEM, (void*)strlen(buf));
   return b;
 }
 
@@ -58,20 +59,20 @@ gzFile *gzf_open(char *file, char *mode)
 {
   gzFile *f = gzopen(file, mode);
   if(!f) throw(E_FACCESS, file);
-  resource(f, gzclose);
+  resource(f, (resource_handler)gzclose);
   return f;
 }
 
 unsigned int gzf_write(gzFile *f, void *buf, unsigned int max)
 {
-  unsigned int len = gzwrite(f, buf, len);
+  unsigned int len = gzwrite(f, buf, max);
   if(!len && max != len) throw(E_FINVAL, f);
   return len;
 }
 
 unsigned int gzf_read(gzFile *f, void *buf, unsigned int max)
 {
-  int len = gzread(f, buf, len);
+  int len = gzread(f, buf, max);
   if(len < 0) throw(E_FINVAL, f);
   return (unsigned int)len;
 }
