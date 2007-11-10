@@ -38,17 +38,16 @@ void release(void *r)
       for(count = state->resources;
           count > 0 && res && res->res != r;
           last = res, res = res->next) count--;
-      if(!res) throw(E_BADFREE, r);
-      if(res->res == r) break;
+      if(!res || res->res == r) break;
     }
   }
   if(!state) {
     /* No current state; Search the entire global state.   *
      * This _can_ be reached if we can't locate the state. */
     for(; res && res->res != r; last = res, res = res->next);
-    if(!res) throw(E_BADFREE, r);
   }
 
+  if(!res) throw(E_BADFREE, r);
   if(last) last->next = res->next;
   else the_exception_context->alloc = res->next;
   if(state) state->resources--; 

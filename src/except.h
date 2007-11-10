@@ -79,12 +79,14 @@ struct exception_context {
           else { } \
           the_exception_context->caught = 0; \
         } \
-        else the_exception_context->caught = 1; \
-        the_exception_context->last->exception->type = \
-               the_exception_context->passthrough.type; \
-        the_exception_context->last->exception->value = \
-               the_exception_context->passthrough.value; \
-        the_exception_context->last = exception__s.next; \
+        else { \
+          the_exception_context->caught = 1; \
+          the_exception_context->last->exception->type = \
+                the_exception_context->passthrough.type; \
+          the_exception_context->last->exception->value = \
+                the_exception_context->passthrough.value; \
+          the_exception_context->last = exception__s.next; \
+        } \
         break; \
       } \
       else exception__s.exception = e_addr; \
