@@ -27,7 +27,13 @@ exceptions to single-threaded programs. For the original version, see
 #include <setjmp.h>
 
 enum EXCEPTION_TYPE {
-  E_NONE = 0, E_NOMEM, E_BADFREE, E_INVAL, E_OVRFLO, E_USER
+  E_NONE = 0,
+  E_NOMEM,
+  E_BADFREE,
+  E_INVAL,
+  E_FACCESS,
+  E_FINVAL,
+  E_USER
 };
 
 typedef struct {
@@ -112,6 +118,9 @@ extern struct exception_context the_exception_context[1];
 void init_exception_context(struct exception_context *e);
 void resource(void *r, void (*f)(void *));
 void release(void *r);
+void release_all();
 void throw(enum EXCEPTION_TYPE t, void *value);
+
+typedef void (*resource_handler)(void *);
 
 #endif /* CEXCEPT_H */
