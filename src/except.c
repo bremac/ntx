@@ -7,10 +7,25 @@ struct exception_context the_exception_context[1] = {
   {NULL, NULL, {E_NONE, NULL}, 0}
 };
 
+void find_res(void *r)
+{
+  struct resource__state *res = the_exception_context->alloc;
+
+  for(; res && res->res != r; res = res->next);
+  if(res && res->res == r) {
+    fprintf(stderr, "%d is already stored in the resource heap!\n", (int)r);
+    exit(EXIT_FAILURE);
+  }
+}
+
 void resource(void *r, void (*f)(void *))
 {
   /* Add a managed resource to the current state. */
   struct resource__state *res;
+
+#if 0
+  find_res(r);
+#endif
 
   if(!(res = malloc(sizeof(struct resource__state))))
     throw(E_NOMEM, (void*)sizeof(struct resource__state));
@@ -24,7 +39,7 @@ void resource(void *r, void (*f)(void *))
   if(the_exception_context->last) the_exception_context->last->resources++;
 }
 
-void release(void *r)
+void release_pop(void *r, unsigned int rel)
 {
   /* Release a resource from the current lexical state. */
   struct resource__state *last = NULL, *res;
@@ -50,8 +65,8 @@ void release(void *r)
   if(!res) throw(E_BADFREE, r);
   if(last) last->next = res->next;
   else the_exception_context->alloc = res->next;
-  if(state) state->resources--; 
-  res->rel(res->res);
+  if(state) state->resources--;
+  if(rel) res->rel(res->res);
   free(res);
 }
 

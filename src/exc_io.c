@@ -26,6 +26,7 @@ void *alloc(unsigned int size)
 {
   void *buf = malloc(size);
   if(!buf) throw(E_NOMEM, (void*)size);
+  resource(buf, free);
   return buf;
 }
 
@@ -33,6 +34,8 @@ void *ralloc(void *buf, unsigned int size)
 {
   void *tmp = realloc(buf, size);
   if(!tmp) throw(E_NOMEM, (void*)size);
+  release_pop(buf, 0);
+  resource(tmp, free);
   return tmp;
 }
 
@@ -40,6 +43,7 @@ char *strdupe(char *buf)
 {
   char *b = strdup(buf);
   if(!b) throw(E_NOMEM, (void*)strlen(buf));
+  resource(b, free);
   return b;
 }
 

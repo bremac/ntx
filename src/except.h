@@ -119,7 +119,8 @@ extern struct exception_context the_exception_context[1];
 
 void init_exception_context(struct exception_context *e);
 void resource(void *r, void (*f)(void *));
-void release(void *r);
+void release_pop(void *r, unsigned int rel);
+#define release(a) release_pop((a), 1)
 void release_all();
 void throw(enum EXCEPTION_TYPE t, void *value);
 
