@@ -29,7 +29,7 @@ long int ntx_flen(char *file);
 typedef void * n_dir;
 n_dir ntx_dopen(char *dir);
 char *ntx_dread(n_dir dir);
-int ntx_dclose(n_dir dir);
+void ntx_dclose(n_dir dir);
 
 
 /* XXX: Update functions should write and rename a temporary file. */

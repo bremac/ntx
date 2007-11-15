@@ -6,9 +6,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <dirent.h>
+#include "except.h"
+#include "exc_io.h"
 
 #define NTX_DIR     ".ntx"
-#define BUFFER_LEN  1024
+#define BUFFER_LEN  8096
 #define FILE_MAX    (FILENAME_MAX+1)
 
 /* Prototypes of utility functions. */
@@ -22,18 +24,17 @@ void ntx_editor(char *file)
     char *editor = getenv("EDITOR");
     pid_t child;
 
-    if(!editor) die("The environment variable EDITOR is unset.");
-
-    if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
-    else waitpid(child, NULL, 0);
+    if(editor) {
+      if((child = fork()) == 0) execlp(editor, editor, file, (char*)NULL);
+      else waitpid(child, NULL, 0);
+    } else die("The environment variable EDITOR is unset.\n");
   } else {
-    /* Copy data from stdin to the target file. */
-    FILE *f = fopen(file, "w");
+    FILE *f = raw_open(file, "w");
     char buffer[BUFFER_LEN];
 
-    if(!f) return;
+    /* Copy data from stdin to the target file. */
     while(fgets(buffer, BUFFER_LEN, stdin)) fputs(buffer, f);
-    fclose(f);
+    release(f);
   }
 }
 
@@ -46,8 +47,7 @@ void ntx_homedir(char *sub, ...)
 
   va_start(args, sub);
   if(!(path = getenv("NTXROOT"))) {
-    if(!snprintf(ntxroot, FILE_MAX, "%s/"NTX_DIR, getenv("HOME")))
-      die("Unknown execution failure.\n");
+    seprintf(ntxroot, FILE_MAX, "%s/"NTX_DIR, getenv("HOME"));
     path = ntxroot;
   }
 
@@ -63,13 +63,15 @@ void ntx_homedir(char *sub, ...)
 long int ntx_flen(char *file)
 {
   struct stat tmp;
-  if(stat(file, &tmp) != 0) return -1;
+  if(stat(file, &tmp) != 0) throw(E_FACCESS, file);
   return tmp.st_size;
 }
 
 DIR *ntx_dopen(char *dir)
 {
-  return opendir(dir);
+  DIR *d = opendir(dir);
+  if(!d) throw(E_FACCESS, dir);
+  return d;
 }
 
 char *ntx_dread(DIR *dir)
@@ -80,7 +82,7 @@ char *ntx_dread(DIR *dir)
   return dirp->d_name;
 }
 
-int ntx_dclose(DIR *dir)
+void ntx_dclose(DIR *dir)
 {
-  return closedir(dir);
+  closedir(dir);
 }
