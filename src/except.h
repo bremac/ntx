@@ -31,8 +31,9 @@ enum EXCEPTION_TYPE {
   E_NOMEM,
   E_BADFREE,
   E_INVAL,
+  E_OVRFLO,
   E_FACCESS,
-  E_FINVAL,
+  E_FIOERR,
   E_USER
 };
 

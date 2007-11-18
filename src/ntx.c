@@ -127,7 +127,7 @@ int ntx_replace(char *file, char *id, char *fix)
 
   /* Parse the buffer contents to find the given position. */
   for(ptr = buf; *ptr; ptr = end+1) {
-    if(!(end = strchr(ptr, '\n'))) throw(E_FINVAL, file);
+    if(!(end = strchr(ptr, '\n'))) throw(E_INVAL, file);
     if(strncmp(id, ptr, 4) == 0) {
       if(fix) gzf_putl(f, fix);
       found = 1;
@@ -148,7 +148,7 @@ char *ntx_find(char *file, char *id)
 
   /* Parse the buffer contents to find the given position. */
   for(ptr = buf; *ptr; ptr = end + 1) {
-    if(!(end = strchr(ptr, '\n'))) throw(E_FINVAL, file);
+    if(!(end = strchr(ptr, '\n'))) throw(E_INVAL, file);
     if(strncmp(id, ptr, 4) == 0) {
       *end = '\0';
       ptr = strdupe(ptr);
@@ -573,15 +573,16 @@ int main(int argc, char **argv)
     else ntx_usage(EXIT_FAILURE);
   } catch(exc) {
     switch(exc.type) {
-      case E_FINVAL:  die("Invalid file accessed.\n");
-      case E_INVAL:   die("Invalid data accessed.\n");
+      case E_FIOERR:  die("Input/Output error.\n");
+      case E_OVRFLO:  die("Buffer to small to contain target.\n");
       case E_FACCESS: die("Unable to open %s.\n", exc.value);
-      case E_NOMEM:   die("Unable to allocate %d bytes.\n", (int)exc.value);
+      case E_NOMEM:   if(exc.value) die("Unable to allocate %d bytes.\n", (int)exc.value);
+                      else          die("Out of memory.\n");
       case E_BADFREE: die("Double free of %d.\n", (int)exc.value);
+      case E_INVAL:
       case E_NONE:
-      case E_USER:    break;
+      case E_USER:    die("Unknown exception caught.\n");
     }
-    /* TODO */
   }
   return EXIT_SUCCESS;
 }

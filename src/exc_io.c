@@ -3,9 +3,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <zlib.h>
+#include <errno.h>
 #include "except.h"
-
-/* XXX: Interpret errno, etc. */
 
 FILE *raw_open(char *file, char *mode)
 {
@@ -18,7 +17,7 @@ FILE *raw_open(char *file, char *mode)
 char* raw_getl(FILE *f, char *buf, unsigned int max)
 {
   char *b = fgets(buf, max, f);
-  if(!b && ferror(f) != 0) throw(E_FINVAL, f);
+  if(!b && ferror(f) != 0) throw(E_FIOERR, f);
   return b;
 }
 
@@ -55,14 +54,17 @@ unsigned int seprintf(char *buf, unsigned int max, char *fmt, ...)
   va_start(args, fmt);
   len = vsnprintf(buf, max, fmt, args);
   va_end(args);
-  if(len < 0) throw(E_INVAL, NULL); /* XXX: Detail? */
+  if(len < 0) throw(E_OVRFLO, NULL);
   return (unsigned int)len;
 }
 
 gzFile *gzf_open(char *file, char *mode)
 {
   gzFile *f = gzopen(file, mode);
-  if(!f) throw(E_FACCESS, file);
+  if(!f) {
+    if(errno) throw(E_FACCESS, file);
+    else throw(E_NOMEM, NULL);
+  }
   resource(f, (resource_handler)gzclose);
   return f;
 }
@@ -70,27 +72,27 @@ gzFile *gzf_open(char *file, char *mode)
 unsigned int gzf_write(gzFile *f, void *buf, unsigned int max)
 {
   unsigned int len = gzwrite(f, buf, max);
-  if(!len && max != len) throw(E_FINVAL, f);
+  if(!len && max != len) throw(E_FIOERR, f);
   return len;
 }
 
 unsigned int gzf_read(gzFile *f, void *buf, unsigned int max)
 {
   int len = gzread(f, buf, max);
-  if(len < 0) throw(E_FINVAL, f);
+  if(len < 0) throw(E_FIOERR, f);
   return (unsigned int)len;
 }
 
 unsigned int gzf_putl(gzFile *f, char *buf)
 {
   int len = gzputs(f, buf);
-  if(len < 0) throw(E_FINVAL, f);
+  if(len < 0) throw(E_FIOERR, f);
   return (unsigned int)len;
 }
 
 char *gzf_getl(gzFile *f, void *buf, unsigned int max)
 {
   char *b = gzgets(f, buf, max);
-  if(b == Z_NULL && !gzeof(f)) throw(E_FINVAL, f);
+  if(b == Z_NULL && !gzeof(f)) throw(E_FIOERR, f);
   return b;
 }
