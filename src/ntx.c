@@ -521,6 +521,7 @@ void ntx_retag(char *id, char **tags)
 
 void ntx_usage(int retcode)
 {
+  /* Abbreviated usage information for ntx. */
   puts("Usage:\tntx [mode] [arguments] ..\n");
   puts("Modes:\tadd  [tags ..]\t\tAdd a note to tags.");
   puts("\tedit [hex]\t\tEdit the note with the ID 'hex'.");
@@ -531,13 +532,15 @@ void ntx_usage(int retcode)
   puts("\ttag  [hex] [tags ..]\tRe-tag 'hex' with the list 'tags'.");
   puts("\t-h or --help\t\tPrint this information.\n");
 
-  /* XXX: Flow and paragraph form _must_ improve. */
-  puts("Understanding the output of 'ntx list':");
-  puts("\t'ntx list' outputs a four-byte hexidecimal ID, followed by a tab,");
-  printf("\tand then a brief summary comprised of the first %d bytes of the\n", SUMMARY_WIDTH);
-  puts("\tfirst line of the saved note. This ID is used to refer to the note");
-  puts("\twhen using the edit, put, rm, and tag modes.\n");
+  /* Explanation of the output of 'ntx list'. */
+  puts("The focus of ntx is displaying tag intersections, as performed by");
+  puts("'ntx list'. This outputs a four-byte hexidecimal ID, a tab, and");
+  printf("then a brief summary composed of the first %d bytes of the\n",
+          SUMMARY_WIDTH);
+  puts("first line of the saved note. This ID is serves as a reference to");
+  puts("the note when using the 'edit', 'put', 'rm', and 'tag' modes.\n");
 
+  /* Paragraph concerning the user interface when adding/altering notes. */
   puts("When adding or editing notes, the interface presented to the user");
   puts("depends on the host operating environment. On POSIX-style systems,");
   puts("if ntx is receiving input from a tty, the editor specified in the");
