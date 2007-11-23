@@ -86,8 +86,10 @@ struct exception_context {
                 the_exception_context->passthrough.type; \
           the_exception_context->last->exception->value = \
                 the_exception_context->passthrough.value; \
-          the_exception_context->last = exception__s.next; \
         } \
+        if(exception__s.next) \
+          exception__s.next->resources += exception__s.resources; \
+        the_exception_context->last = exception__s.next; \
         break; \
       } \
       else exception__s.exception = e_addr; \
