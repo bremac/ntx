@@ -584,8 +584,9 @@ int main(int argc, char **argv)
       case E_FIOERR:   fclose(exc.value);
                        die(strerror(errno));
       case E_GZFIOERR: error = gzerror(exc.value, &errnum);
+                       fprintf(stderr, "ERROR: %s\n", error);
                        gzclose(exc.value);
-                       die(error);
+                       exit(EXIT_FAILURE);
       case E_OVRFLO:   die("Buffer overflow prevented.");
       case E_FACCESS:  die("Unable to open %s.", exc.value);
       case E_NOMEM:    die("Unable to allocate sufficient memory.");
