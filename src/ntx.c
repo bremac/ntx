@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <zlib.h>
+#include <errno.h>
 #include "except.h"
 #include "exc_io.h"
 #include "hash_table.h"
@@ -34,7 +35,7 @@ void ntx_dclose(n_dir dir);
 
 /* XXX: Update functions should write and rename a temporary file. */
 
-void die(char *fmt, ...)
+void die(const char *fmt, ...)
 {
   va_list args;
 
@@ -42,6 +43,8 @@ void die(char *fmt, ...)
   fputs("ERROR: ", stderr);
   vfprintf(stderr, fmt, args);
   va_end(args);
+  fputs("\n", stderr);
+
   exit(EXIT_FAILURE);
 }
 
@@ -248,7 +251,7 @@ void ntx_edit(char *id)
 
     seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
     if(!(tags = ntx_find(file, id)))
-      die("Unable to locate note %s in %s.\n", id, file);
+      die("Unable to locate note %s in %s.", id, file);
 
     cur = tags + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) {
@@ -256,14 +259,14 @@ void ntx_edit(char *id)
       /* Update the tags - O(n) search through the affected indices. */
       seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
       if(ntx_replace(file, id, note) == 0)
-        die("Unable to locate note %s in %s.\n", id, file);
+        die("Unable to locate note %s in %s.", id, file);
       cur = ptr + 1;
     }
     release(tags);
 
     /* Update the index file. */
     if(ntx_replace(INDEX_FILE, id, note) == 0)
-      die("Unable to locate note %s in %s.\n", id, file);
+      die("Unable to locate note %s in %s.", id, file);
   }
 
   /* Dump the summary to STDOUT as confirmation that everything went well. */
@@ -318,7 +321,7 @@ void ntx_list(char **tags, unsigned int tagc)
   gzFile *f;
 
   /* Too many tags for proper ref-counting, or even sane evaluation. */
-  if(tagc > 127) die("Too many (more than 127) tags.\n");
+  if(tagc > 127) die("Too many (more than 127) tags.");
 
   if(tagc == 0) { /* No tags specified, open the index. */
     f = gzf_open(INDEX_FILE, "r");
@@ -349,7 +352,7 @@ void ntx_list(char **tags, unsigned int tagc)
       name = alloc(len);
       seprintf(name, len, TAGS_DIR"/%s", tags[i]);
 
-      if((size = ntx_flen(name)) == -1) die("Unable to open %s.\n", name);
+      if((size = ntx_flen(name)) == -1) die("Unable to open %s.", name);
       files[i].path = name;
       files[i].size = size;
     }
@@ -383,7 +386,7 @@ void ntx_list(char **tags, unsigned int tagc)
       }
       release(f);
       if(exists == 0) 
-        die("No notes exist in the intersection of those tags.\n");
+        die("No notes exist in the intersection of those tags.");
     }
 
     /* Print all of the tags which had 'tagc' references. */
@@ -418,7 +421,7 @@ void ntx_del(char *id)
 
   /* Find the line describing the tags of the given ID. */
   if(!(buf = ntx_find(file, id)))
-    die("Unable to locate note %s in %s.\n", id, file);
+    die("Unable to locate note %s in %s.", id, file);
 
   cur = buf + 5; /* Skip the ID, plus the tab. */
   while((ptr = strchr(cur, ';'))) {
@@ -426,23 +429,23 @@ void ntx_del(char *id)
     /* Delete the tags - O(n) search through the affected indices. */
     seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
     if(ntx_replace(file, id, NULL) == 0)
-      die("Problem removing info for note %s from %s.\n", id, file);
+      die("Problem removing info for note %s from %s.", id, file);
     cur = ptr + 1;
   }
   release(buf);
 
   /* Remove it from the index. */
   if(ntx_replace(INDEX_FILE, id, NULL) == 0)
-    die("Problem removing info for note %s from index.\n", id);
+    die("Problem removing info for note %s from index.", id);
 
   /* Remove the backreference. */
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
   if(ntx_replace(file, id, NULL) == 0)
-    die("Problem removing info for note %s from %s.\n", id, file);
+    die("Problem removing info for note %s from %s.", id, file);
 
   /* Remove the note itself from NOTES_DIR. */
   seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
-  if(remove(file) != 0) die("Unable to remove note %s.\n", id);
+  if(remove(file) != 0) die("Unable to remove note %s.", id);
 }
 
 void ntx_tags(char *id)
@@ -451,7 +454,7 @@ void ntx_tags(char *id)
     char *name;
     n_dir dir = ntx_dopen(TAGS_DIR);
 
-    if(!dir) die("Unable to read directory %s.\n", TAGS_DIR);
+    if(!dir) die("Unable to read directory %s.", TAGS_DIR);
     while((name = ntx_dread(dir))) if(name[0] != '.') puts(name);
 
     ntx_dclose(dir);
@@ -460,7 +463,7 @@ void ntx_tags(char *id)
 
     seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
     if(!(buf = ntx_find(file, id)))
-      die("Unable to locate note %s in %s.\n", id, file);
+      die("Unable to locate note %s in %s.", id, file);
 
     cur = buf + 5; /* Skip the ID, plus the tab. */
     while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
@@ -488,7 +491,7 @@ void ntx_retag(char *id, char **tags)
   /* Read in the original listing of tags for this file. */
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
   if(!(orig = ntx_find(file, id)))
-    die("Unable to locate note %s in %s.\n", id, file);
+    die("Unable to locate note %s in %s.", id, file);
 
   /* Add any tags which don't yet exist. */
   for(cur = tags; *cur; cur++) {
@@ -506,7 +509,7 @@ void ntx_retag(char *id, char **tags)
     if(!*cur) { /* Remove any tags we didn't find. */
       seprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp);
       if(ntx_replace(file, id, NULL) == 0)
-        die("Unable to locate note %s in %s.\n", id, file);
+        die("Unable to locate note %s in %s.", id, file);
     }
   }
 
@@ -514,7 +517,7 @@ void ntx_retag(char *id, char **tags)
   tmp = ntx_tagstolist(id, tags);
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
   if(ntx_replace(file, id, tmp) == 0)
-    die("Unable to locate note %s in %s.\n", id, file);
+    die("Unable to locate note %s in %s.", id, file);
 
   release(tmp);
 }
@@ -554,6 +557,8 @@ void ntx_usage(int retcode)
 int main(int argc, char **argv)
 {
   exception_t exc;
+  const char *error;
+  int errnum;
 
   atexit(release_all);
 
@@ -576,15 +581,18 @@ int main(int argc, char **argv)
     else ntx_usage(EXIT_FAILURE);
   } catch(exc) {
     switch(exc.type) {
-      case E_FIOERR:  die("Input/Output error.\n");
-      case E_OVRFLO:  die("Buffer to small to contain target.\n");
-      case E_FACCESS: die("Unable to open %s.\n", exc.value);
-      case E_NOMEM:   if(exc.value) die("Unable to allocate %d bytes.\n", (int)exc.value);
-                      else          die("Out of memory.\n");
-      case E_BADFREE: die("Double free of %d.\n", (int)exc.value);
+      case E_FIOERR:   fclose(exc.value);
+                       die(strerror(errno));
+      case E_GZFIOERR: error = gzerror(exc.value, &errnum);
+                       gzclose(exc.value);
+                       die(error);
+      case E_OVRFLO:   die("Buffer overflow prevented.");
+      case E_FACCESS:  die("Unable to open %s.", exc.value);
+      case E_NOMEM:    die("Unable to allocate sufficient memory.");
+      case E_BADFREE:  die("Double free of %d.\n", (int)exc.value);
       case E_INVAL:
       case E_NONE:
-      case E_USER:    die("Unknown exception caught.\n");
+      case E_USER:     die("Unknown exception caught.\n");
     }
   }
   return EXIT_SUCCESS;
