@@ -85,7 +85,7 @@ void throw(enum EXCEPTION_TYPE type, void *value)
   for(res = the_exception_context->alloc,
       count = the_exception_context->last->resources;
       count > 0 && res; count--) {
-    res->rel(res->res);
+    if(value != res->res) res->rel(res->res);
     temp = res->next;
     free(res);
     res = temp;

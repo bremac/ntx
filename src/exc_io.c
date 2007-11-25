@@ -24,7 +24,7 @@ char* raw_getl(FILE *f, char *buf, unsigned int max)
 void *alloc(unsigned int size)
 {
   void *buf = malloc(size);
-  if(!buf) throw(E_NOMEM, (void*)size);
+  if(!buf) throw(E_NOMEM, NULL);
   resource(buf, free);
   return buf;
 }
@@ -32,7 +32,7 @@ void *alloc(unsigned int size)
 void *ralloc(void *buf, unsigned int size)
 {
   void *tmp = realloc(buf, size);
-  if(!tmp) throw(E_NOMEM, (void*)size);
+  if(!tmp) throw(E_NOMEM, NULL);
   release_pop(buf, 0);
   resource(tmp, free);
   return tmp;
@@ -41,7 +41,7 @@ void *ralloc(void *buf, unsigned int size)
 char *strdupe(char *buf)
 {
   char *b = strdup(buf);
-  if(!b) throw(E_NOMEM, (void*)strlen(buf));
+  if(!b) throw(E_NOMEM, NULL);
   resource(b, free);
   return b;
 }
@@ -72,27 +72,27 @@ gzFile *gzf_open(char *file, char *mode)
 unsigned int gzf_write(gzFile *f, void *buf, unsigned int max)
 {
   unsigned int len = gzwrite(f, buf, max);
-  if(!len && max != len) throw(E_FIOERR, f);
+  if(!len && max != len) throw(E_GZFIOERR, f);
   return len;
 }
 
 unsigned int gzf_read(gzFile *f, void *buf, unsigned int max)
 {
   int len = gzread(f, buf, max);
-  if(len < 0) throw(E_FIOERR, f);
+  if(len < 0) throw(E_GZFIOERR, f);
   return (unsigned int)len;
 }
 
 unsigned int gzf_putl(gzFile *f, char *buf)
 {
   int len = gzputs(f, buf);
-  if(len < 0) throw(E_FIOERR, f);
+  if(len < 0) throw(E_GZFIOERR, f);
   return (unsigned int)len;
 }
 
 char *gzf_getl(gzFile *f, void *buf, unsigned int max)
 {
   char *b = gzgets(f, buf, max);
-  if(b == Z_NULL && !gzeof(f)) throw(E_FIOERR, f);
+  if(b == Z_NULL && !gzeof(f)) throw(E_GZFIOERR, f);
   return b;
 }

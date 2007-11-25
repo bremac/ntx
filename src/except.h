@@ -34,6 +34,7 @@ enum EXCEPTION_TYPE {
   E_OVRFLO,
   E_FACCESS,
   E_FIOERR,
+  E_GZFIOERR,
   E_USER
 };
 
