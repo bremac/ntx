@@ -570,12 +570,12 @@ int main(int argc, char **argv)
   ntx_homedir(TAGS_DIR, REFS_DIR, NOTES_DIR, NULL);
 
   try {
-    if(!strcmp(argv[1], "add") && argc >= 3)       ntx_add(argv+2);
+    if(!strcmp(argv[1], "add")    &&    argc >= 3) ntx_add(argv+2);
     else if(!strcmp(argv[1], "edit") && argc == 3) ntx_edit(argv[2]);
     else if(!strcmp(argv[1], "list") && argc >= 2) ntx_list(argv+2, argc - 2);
-    else if(!strcmp(argv[1], "put") && argc == 3)  ntx_put(argv[2]);
-    else if(!strcmp(argv[1], "rm") && argc == 3)   ntx_del(argv[2]);
-    else if(!strcmp(argv[1], "tag") && argc > 3)   ntx_retag(argv[2], argv+3);
+    else if(!strcmp(argv[1], "put") &&  argc == 3) ntx_put(argv[2]);
+    else if(!strcmp(argv[1], "rm")  &&  argc == 3) ntx_del(argv[2]);
+    else if(!strcmp(argv[1], "tag") &&  argc > 3)  ntx_retag(argv[2], argv+3);
     else if(!strcmp(argv[1], "tag") && (argc == 2 || argc == 3))
                                                    ntx_tags(argv[2]);
     else ntx_usage(EXIT_FAILURE);
@@ -590,10 +590,10 @@ int main(int argc, char **argv)
       case E_OVRFLO:   die("Buffer overflow prevented.");
       case E_FACCESS:  die("Unable to open %s.", exc.value);
       case E_NOMEM:    die("Unable to allocate sufficient memory.");
-      case E_BADFREE:  die("Double free of %d.\n", (int)exc.value);
-      case E_INVAL:
+      case E_BADFREE:  die("Double free of %d.", (int)exc.value);
+      case E_INVAL:    die("%s is corrupt.", exc.value);
       case E_NONE:
-      case E_USER:     die("Unknown exception caught.\n");
+      case E_USER:     die("Unknown exception caught.");
     }
   }
   return EXIT_SUCCESS;
