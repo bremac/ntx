@@ -227,3 +227,6 @@ assert del-4e "$TAGS" "*unix*"
 # Clean up after ourselves.
 rm -r $NTXROOT
 rm $EDIT
+
+# Run regression tests as necessary.
+# . regtest_del_output.sh
