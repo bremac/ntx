@@ -1,4 +1,4 @@
-The Brief Guide to Porting ntx:
+A Brief Guide to Porting ntx:
 
 The notetags-extended utility was written mainly to the ANSI C99 standard,
 however, some required operations are operating environment independent.
