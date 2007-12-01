@@ -11,15 +11,37 @@
 
 /* Buffer size definitions. */
 #define FILE_MAX      (FILENAME_MAX+1)
-#define BUFFER_MAX    8192
-#define SUMMARY_WIDTH 58
-#define PADDING_WIDTH 7
+#define BUFFER_MAX     8192
+
+/* ID: Four hexidecimal digits. */
+#define ID_LENGTH      4
+
+/* Single character seperator. */
+#define SEP_LENGTH     1
+
+/* Maximum summary length to read. */
+#define SUMMARY_LENGTH 58 
+
+/* "\n\0" line terminator. */
+#define PADDING_LENGTH 2    
+
+#define SUMREC_LENGTH  (ID_LENGTH + SEP_LENGTH + SUMMARY_LENGTH + PADDING_LENGTH)
+#define SUMBASE_LENGTH (ID_LENGTH + SEP_LENGTH + PADDING_LENGTH)
+#define SUMMARY_OFFSET (ID_LENGTH + SEP_LENGTH)
+
+
+/* Default (_one character_) separators.            *
+ * \n the a hard-coded record separator, due to the *
+ * fgets style of line handling.                    */
+const char ID_SEP    = '\t';
+const char FIELD_SEP = ';';
+
 
 /* Builtin Subdirectories. */
-#define TAGS_DIR      "tags"
-#define REFS_DIR      "refs"
-#define NOTES_DIR     "notes"
-#define INDEX_FILE    "index"
+#define TAGS_DIR   "tags"
+#define REFS_DIR   "refs"
+#define NOTES_DIR  "notes"
+#define INDEX_FILE "index"
 
 
 /* Prototypes of system-dependent functions. */
@@ -48,25 +70,23 @@ void die(const char *fmt, ...)
   exit(EXIT_FAILURE);
 }
 
-/* 'buf' should be SUMMARY_WIDTH + 2 bytes long. */
+/* 'buf' should be SUMMARY_LENGTH + PADDING_LENGTH bytes long. */
 void ntx_summary(char *file, char *buf)
 {
   FILE *f = raw_open(file, "r");
   char *temp;
 
-  temp = raw_getl(f, buf, SUMMARY_WIDTH+2);
+  temp = raw_getl(f, buf, SUMMARY_LENGTH + PADDING_LENGTH);
   release(f);
   if(!temp || strlen(temp) == 0) throw(E_INVAL, file);
 
-  /* Set a null at the maximum position to ensure we don't overdo it. */
+  /* Format the string into SUMMARY_LENGTH bytes. */
   if((temp = strchr(buf, '\n'))) temp[1] = '\0';
   else {
     unsigned int end = strlen(buf);
 
-    buf[end-4] = '.';
-    buf[end-3] = '.';
-    buf[end-2] = '.';
-    buf[end-1] = '\n';
+    end = (end >= 4) ? end : 4; /* Prevent illogical accesses. */
+    strcpy(buf+end-4, "...\n"); /* Change the last four bytes. */
   }
 }
 
@@ -93,21 +113,21 @@ char *ntx_buffer(char *file)
 char *ntx_tagstolist(char *id, char **tags)
 {
   char *list, *pos, **cur;
-  unsigned int len = PADDING_WIDTH; /* ID + tab + newline + NULL. */
+  unsigned int len = SUMBASE_LENGTH; /* Allocate from the base summary size. */
 
   /* Precompute the length of the tags. */
   for(cur = tags; *cur; cur++) len += strlen(*cur) + 1;
   list = alloc(len);
 
   strncpy(list, id, 4);
-  list[4] = '\t';
+  list[4] = ID_SEP;
 
   pos = list + 5;
 
   for(cur = tags; *cur; cur++) {
     strcpy(pos, *cur);
     len = strlen(*cur);
-    pos[len] = ';';
+    pos[len] = FIELD_SEP;
     pos += len + 1;
   }
 
@@ -174,7 +194,7 @@ void ntx_append(char *file, char *str)
 /* Front-end functions, user interaction. */
 void ntx_add(char **tags)
 {
-  char file[FILE_MAX], note[SUMMARY_WIDTH + PADDING_WIDTH];
+  char file[FILE_MAX], note[SUMREC_LENGTH];
   char **ptr, *tmp;
   unsigned int num;
   exception_t exc;
@@ -196,7 +216,7 @@ void ntx_add(char **tags)
   ntx_editor(file);
 
   /* Get the summary line, and write it in abbreviated form to each index. */
-  try ntx_summary(file, note+5);
+  try ntx_summary(file, note + SUMMARY_OFFSET);
   catch(exc) {
     if((exc.type == E_FACCESS || exc.type == E_INVAL) &&
        strcmp(file, exc.value) == 0) {
@@ -207,8 +227,8 @@ void ntx_add(char **tags)
   }
 
   /* Fill in the identification information. */
-  strncpy(note, file+6, 4);
-  note[4] = '\t';
+  strncpy(note, file + strlen(NOTES_DIR) + 1, ID_LENGTH);
+  note[4] = ID_SEP;
 
   for(ptr = tags; *ptr != NULL; ptr++) {
     seprintf(file, FILE_MAX, TAGS_DIR"/%s", *ptr);
@@ -230,8 +250,8 @@ void ntx_add(char **tags)
 
 void ntx_edit(char *id)
 {
-  char file[FILE_MAX], head[SUMMARY_WIDTH + 2];
-  char note[SUMMARY_WIDTH + PADDING_WIDTH];
+  char file[FILE_MAX], head[SUMMARY_LENGTH + PADDING_LENGTH];
+  char note[SUMREC_LENGTH];
 
   seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
 
@@ -241,26 +261,26 @@ void ntx_edit(char *id)
 
   /* See if the header has changed; If so, rewrite the headers. */
   /* XXX: If we can't reread the file, do we need to take action? */
-  ntx_summary(file, note+5);
-  if(strcmp(head, note+5)) {
+  ntx_summary(file, note + SUMMARY_OFFSET);
+  if(strcmp(head, note + SUMMARY_OFFSET)) {
     char *tags, *cur, *ptr;
 
     /* Fill in the identification information. */
-    strncpy(note, id, 4);
-    note[4] = '\t';
+    strncpy(note, id, ID_LENGTH);
+    note[ID_LENGTH] = ID_SEP;
 
     seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
     if(!(tags = ntx_find(file, id)))
       die("Unable to locate note %s in %s.", id, file);
 
-    cur = tags + 5; /* Skip the ID, plus the tab. */
-    while((ptr = strchr(cur, ';'))) {
+    for(cur = tags + SUMMARY_OFFSET; (ptr = strchr(cur, FIELD_SEP));
+        cur = ptr + 1) {
       *ptr = '\0';
+
       /* Update the tags - O(n) search through the affected indices. */
       seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
       if(ntx_replace(file, id, note) == 0)
         die("Unable to locate note %s in %s.", id, file);
-      cur = ptr + 1;
     }
     release(tags);
 
@@ -317,7 +337,7 @@ int cmp_val(void *a, void *b)
 /* XXX: hasht_* error checking. */
 void ntx_list(char **tags, unsigned int tagc)
 {
-  char line[SUMMARY_WIDTH + PADDING_WIDTH];
+  char line[SUMREC_LENGTH];
   gzFile *f;
 
   /* Too many tags for proper ref-counting, or even sane evaluation. */
@@ -327,7 +347,7 @@ void ntx_list(char **tags, unsigned int tagc)
     f = gzf_open(INDEX_FILE, "r");
 
     /* Duplicate each line from the index to STDOUT. */
-    while(gzf_getl(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
+    while(gzf_getl(f, line, SUMREC_LENGTH)) fputs(line, stdout);
     release(f);
   } else if(tagc == 1) { /* No need to calculate the intersection. */
     char name[FILE_MAX];
@@ -336,7 +356,7 @@ void ntx_list(char **tags, unsigned int tagc)
     f = gzf_open(name, "r");
 
     /* Duplicate each line from the index to STDOUT. */
-    while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) fputs(line, stdout);
+    while(gzgets(f, line, SUMREC_LENGTH)) fputs(line, stdout);
     release(f);
   } else { /* Calculate the union of the sets from the tag files. */
     char *name;
@@ -365,8 +385,8 @@ void ntx_list(char **tags, unsigned int tagc)
     if(!table) return;
 
     /* Read each line in the index into the hash. */
-    while(gzf_getl(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
-      name = alloc(strlen(line)+2); /* Save room for the ref and null. */
+    while(gzf_getl(f, line, SUMREC_LENGTH)) {
+      name = alloc(strlen(line) + 2); /* Save room for the ref and null. */
       name[0] = 1;
       strcpy(name+1, line);
       if((name = hasht_add(table, name))) release(name);
@@ -378,13 +398,15 @@ void ntx_list(char **tags, unsigned int tagc)
     for(i = 1; i < tagc; i++) {
       exists = 0;
       f = gzf_open(files[i].path, "r");
-      while(gzgets(f, line, SUMMARY_WIDTH + PADDING_WIDTH)) {
+
+      while(gzgets(f, line, SUMREC_LENGTH)) {
         if((name = hasht_get(table, line))) {
           name[0]++; /* Increment the refcount. */
           exists = 1;
         }
       }
       release(f);
+
       if(exists == 0) 
         die("No notes exist in the intersection of those tags.");
     }
@@ -423,14 +445,14 @@ void ntx_del(char *id)
   if(!(buf = ntx_find(file, id)))
     die("Unable to locate note %s in %s.", id, file);
 
-  cur = buf + 5; /* Skip the ID, plus the tab. */
-  while((ptr = strchr(cur, ';'))) {
+  for(cur = buf + SUMMARY_OFFSET; (ptr = strchr(cur, FIELD_SEP));
+      cur = ptr + 1) {
     *ptr = '\0';
+
     /* Delete the tags - O(n) search through the affected indices. */
     seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
     if(ntx_replace(file, id, NULL) == 0)
       die("Problem removing info for note %s from %s.", id, file);
-    cur = ptr + 1;
   }
   release(buf);
 
@@ -465,28 +487,28 @@ void ntx_tags(char *id)
     if(!(buf = ntx_find(file, id)))
       die("Unable to locate note %s in %s.", id, file);
 
-    cur = buf + 5; /* Skip the ID, plus the tab. */
-    while((ptr = strchr(cur, ';'))) { /* Write out each of the tags. */
+    for(cur = buf + SUMMARY_OFFSET; (ptr = strchr(cur, FIELD_SEP));
+        cur = ptr + 1) {
       *ptr = '\0';
       puts(cur);
-      cur = ptr + 1;
     }
+
     release(buf);
   }
 }
 
 void ntx_retag(char *id, char **tags)
 {
-  char file[FILE_MAX], desc[SUMMARY_WIDTH + PADDING_WIDTH];
+  char file[FILE_MAX], desc[SUMREC_LENGTH];
   char *tmp, *next, *orig, **cur;
 
   /* Get the summary in case we need to write it. */
   seprintf(file, FILE_MAX, NOTES_DIR"/%s", id); 
-  ntx_summary(file, desc+5);
+  ntx_summary(file, desc + SUMMARY_OFFSET);
 
   /* Fill in the identification information. */
-  strncpy(desc, id, 4);
-  desc[4] = '\t';
+  strncpy(desc, id, ID_LENGTH);
+  desc[ID_LENGTH] = ID_SEP;
 
   /* Read in the original listing of tags for this file. */
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
@@ -502,7 +524,8 @@ void ntx_retag(char *id, char **tags)
   }
 
   /* Remove any tags which don't exist any more. */
-  for(tmp = orig+5; (next = strchr(tmp, ';')); tmp = next + 1) {
+  for(tmp = orig + SUMMARY_OFFSET; (next = strchr(tmp, FIELD_SEP));
+      tmp = next + 1) {
     *next = '\0';
     for(cur = tags; *cur; cur++) if(strcmp(*cur, tmp) == 0) break;
 
@@ -539,7 +562,7 @@ void ntx_usage(int retcode)
   puts("The focus of ntx is displaying tag intersections, as performed by");
   puts("'ntx list'. This outputs a four-byte hexidecimal ID, a tab, and");
   printf("then a brief summary composed of the first %d bytes of the\n",
-          SUMMARY_WIDTH);
+          SUMMARY_LENGTH);
   puts("first line of the saved note. This ID is serves as a reference to");
   puts("the note when using the 'edit', 'put', 'rm', and 'tag' modes.\n");
 
