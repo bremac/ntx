@@ -78,16 +78,16 @@ class NTXServer
       new_id = new_id + 1
     end
 
+    tags = tags.collect {|tag| tag.strip.downcase.to_sym}
     note = Notetag.new(new_id, tags, body)
 
     # Push the new tag into ID hash.
     @note_by_id[note.id] = note
 
     # Push it into each tag group, creating Sets as necessary.
-    tags.each do |tag|
-      (@group_by_tag[tags.to_sym] ||= Set.new) << note
-    end
+    tags.each {|tag| (@group_by_tag[tags] ||= Set.new) << note}
 
+    @touched = true
     note.id
   end
 
@@ -95,13 +95,16 @@ class NTXServer
     note = @note_by_id[id]
 
     # Remove the note from each tag group.
-    note.tags.each do |tags|
-      @group_by_tag[tags.to_sym].delete(note)
+    # Delete each affected tag group should this make it empty.
+    note.tags.each do |tag|
+      @group_by_tag[tag].delete(note)
+      @group_by_tag.delete(tag) if @group_by_tag.length == 0
     end
 
     # Remove the note from the ID hash.
     @note_by_id.delete(id)
 
+    @touched = true
     note.id
   end
 
@@ -109,7 +112,35 @@ class NTXServer
     @note_by_id[id]
   end
 
+  def retrieve_tags
+    @group_by_tag.keys
+  end
+
   def list_category(tags)
+    # If the tags array is empty, return all notes.
+    return @notes_by_id.values if tags.length == 0
+
+    # Collect all of the tag groups.
+    groups = tags.collect {|tag| @group_by_tag[tag.strip.downcase.to_sym]}
+
+    # Shorter execution path for easier searches.
+    return nil       if groups.compact! || req.length == 0
+    return groups[0] if groups.length == 1
+
+    # Sort, so we only need to iterate the shortest set.
+    groups.sort! {|a, b| a.length <=> b.length}
+
+    # Find the intersection of all of the sets by iterating the shortest,
+    # which greatly reduces repeated checks. We use (unencouraged)
+    # metaprogramming to remove an inner loop by replacing the closure
+    # with a proc created via eval.
+    proto_proc = "Proc.new do |note| "
+    (1...groups.length-1).each do |idx|
+      proto_proc << "groups[#{idx}].include?(note) &&"
+    end
+    proto_proc << "groups#{groups.length}.include?(note)"
+
+    groups[0].select &(Object.instance_eval proto_proc)
   end
 end
 

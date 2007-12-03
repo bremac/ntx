@@ -9,6 +9,9 @@ class ClosedStruct
   def self.derive(*fields)
     Class.new(self) do
       fields.each {|f| attr_reader f}
+
+      # We could simply use a splat, but this wouldn't
+      # expose a fixed arity to clients.
       self.class_eval <<-END
         def initialize(#{fields.join ","})
           super
@@ -32,12 +35,14 @@ GetRequest   = Request.derive(:id)
 DelRequest   = Request.derive(:id)
 EditRequest  = Request.derive(:note)
 ListRequest  = Request.derive(:tags)
+TagsRequest  = Request.derive
 
 AddResponse   = Response.derive(:id)
 GetResponse   = Response.derive(:note)
 DelResponse   = Response.derive(:id)
 EditResponse  = Response.derive(:id)
 ListResponse  = Response.derive(:list)
+TagsResponse  = Response.derive(:tags)
 ErrorResponse = Response.derive(:status)
 
 class UNIXTransport
