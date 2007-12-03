@@ -47,6 +47,8 @@ class NTXServer
                                        request.note.id))
         when ListRequest
           ListResponse.new(list_category(request.tags))
+        when TagsRequest
+          TagsResponse.new(retrieve_tags)
         else
           ErrorResponse.new(nil)
         end
@@ -134,11 +136,11 @@ class NTXServer
     # which greatly reduces repeated checks. We use (unencouraged)
     # metaprogramming to remove an inner loop by replacing the closure
     # with a proc created via eval.
-    proto_proc = "Proc.new do |note| "
+    proto_proc = "Proc.new {|note| "
     (1...groups.length-1).each do |idx|
       proto_proc << "groups[#{idx}].include?(note) &&"
     end
-    proto_proc << "groups#{groups.length}.include?(note)"
+    proto_proc << "groups#{groups.length}.include?(note)}"
 
     groups[0].select &(Object.instance_eval proto_proc)
   end
