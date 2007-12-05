@@ -22,11 +22,18 @@ class NTXServer
     @note_by_id   = Hash.new
     @group_by_tag = Hash.new
     @touched      = false
-
-    # Load the list of notes from the file.
-    # Dump the notes into the relevant categories.
-
     @transport    = UNIXTransport.new(uds_path, true)
+
+    # Load the list of notes from the file, and dump
+    # the notes into the relevant categories.
+    @store = PStore.new(store_path)
+    @store.transaction(true) do
+      if @store[:list]
+        @store[:list].each do |note|
+          define_note(note.tags, note.body, note.id)
+        end
+      end
+    end
   end
 
   def server_loop
@@ -36,25 +43,27 @@ class NTXServer
       response = begin
         case request.class
         when AddRequest
-          AddResponse.new(define_note(request.tags, request.body))
+          tags = request.tags.collect {|t| t.strip.downcase.to_sym}
+          AddResponse.new define_note(tags, request.body)
         when GetRequest
-          GetResponse.new(retrieve_note(request.id))
+          GetResponse.new retrieve_note(request.id)
         when DelRequest
-          DelResponse.new(remove_note(request.id))
+          DelResponse.new remove_note(request.id)
         when EditRequest
-          remove_note(request.note.id)
-          EditResponse.new(define_note(request.note.tags, request.note.body,
-                                       request.note.id))
+          remove_note request.note.id
+          EditResponse.new define_note(request.note.tags, request.note.body,
+                                       request.note.id)
         when ListRequest
-          ListResponse.new(list_category(request.tags))
+          tags = request.tags.collect {|t| t.strip.downcase.to_sym}
+          ListResponse.new list_category(tags)
         when TagsRequest
-          TagsResponse.new(retrieve_tags)
+          TagsResponse.new retrieve_tags
         else
-          ErrorResponse.new(nil)
+          ErrorResponse.new nil
         end
       rescue => err
         # Should we send back the exception, or simply nil?
-        ErrorResponse.new(err)
+        ErrorResponse.new err
       end
 
       response.request_id = request.request_id
@@ -62,9 +71,11 @@ class NTXServer
     end
   end
 
-  def flush
+  def save
     if @touched
-      # ...
+      @store.transaction do
+        @store[:list] = @note_by_id.values
+      end
     end
   end
 
@@ -80,7 +91,6 @@ class NTXServer
       new_id = new_id + 1
     end
 
-    tags = tags.collect {|tag| tag.strip.downcase.to_sym}
     note = Notetag.new(new_id, tags, body)
 
     # Push the new tag into ID hash.
@@ -123,7 +133,7 @@ class NTXServer
     return @notes_by_id.values if tags.length == 0
 
     # Collect all of the tag groups.
-    groups = tags.collect {|tag| @group_by_tag[tag.strip.downcase.to_sym]}
+    groups = tags.collect {|tag| @group_by_tag[tag]}
 
     # Shorter execution path for easier searches.
     return nil       if groups.compact! || req.length == 0
@@ -147,10 +157,11 @@ class NTXServer
 end
 
 if __FILE__ == $0
-  server = NTXServer.new("/tmp/ntxserve", "")
+  server = NTXServer.new("/tmp/ntxserve", ENV["HOME"]+"/.ntxdb")
   begin
     server.server_loop
-  rescue Interrupt
+  rescue Exception
     server.close
   end
+  server.save
 end
