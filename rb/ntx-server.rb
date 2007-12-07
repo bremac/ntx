@@ -16,6 +16,7 @@ end
 
 class NTXServer
 
+  # Constant definitions.
   ID_BITMASK = 1048575
 
   def initialize(uds_path, store_path)
@@ -85,10 +86,12 @@ class NTXServer
 
   private
   def define_note(tags, body, id = nil)
-    # Create a unique ID, 
-    new_id = body.hash & ID_BITMASK unless id
-    while(@note_by_id[new_id])
-      new_id = new_id + 1
+    # Create a unique ID, if we require one.
+    unless id
+      new_id = body.hash & ID_BITMASK
+      while(@note_by_id[new_id])
+        new_id = new_id + 1
+      end
     end
 
     note = Notetag.new(new_id, tags, body)
@@ -96,8 +99,11 @@ class NTXServer
     # Push the new tag into ID hash.
     @note_by_id[note.id] = note
 
-    # Push it into each tag group, creating Sets as necessary.
-    tags.each {|tag| (@group_by_tag[tags] ||= Set.new) << note}
+    # Push it into each tag group, creating tables as necessary.
+    tags.each do |tag|
+      group = (@group_by_tag[tags] ||= Hash.new)
+      group[note.id] = note
+    end
 
     @touched = true
     note.id
@@ -109,7 +115,7 @@ class NTXServer
     # Remove the note from each tag group.
     # Delete each affected tag group should this make it empty.
     note.tags.each do |tag|
-      @group_by_tag[tag].delete(note)
+      @group_by_tag[tag].delete(note.id)
       @group_by_tag.delete(tag) if @group_by_tag.length == 0
     end
 
@@ -148,11 +154,11 @@ class NTXServer
     # with a proc created via eval.
     proto_proc = "Proc.new {|note| "
     (1...groups.length-1).each do |idx|
-      proto_proc << "groups[#{idx}].include?(note) &&"
+      proto_proc << "groups[#{idx}].include?(note.id) &&"
     end
-    proto_proc << "groups#{groups.length}.include?(note)}"
+    proto_proc << "groups#{groups.length}.include?(note.id)}"
 
-    groups[0].select &(Object.instance_eval proto_proc)
+    groups[0].values.select &(Object.instance_eval proto_proc)
   end
 end
 
