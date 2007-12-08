@@ -12,12 +12,12 @@ class ClosedStruct
 
       # We could simply use a splat, but this wouldn't
       # expose a fixed arity to clients.
-      self.class_eval <<-END
+      class_eval %{
         def initialize(#{fields.join ","})
           super
           #{fields.map {|f| "@#{f} = #{f}"}}
         end
-      END
+      }
     end
   end
 end
