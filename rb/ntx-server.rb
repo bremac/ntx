@@ -152,13 +152,15 @@ class NTXServer
     # which greatly reduces repeated checks. We use (unencouraged)
     # metaprogramming to remove an inner loop by replacing the closure
     # with a proc created via eval.
-    proto_proc = "Proc.new {|note| "
-    (1...groups.length-1).each do |idx|
-      proto_proc << "groups[#{idx}].include?(note.id) &&"
-    end
-    proto_proc << "groups#{groups.length}.include?(note.id)}"
+    selector = instance_eval %{
+      Proc.new do |note|
+        #{(1...groups.length).collect do |i| 
+            "groups[#{i}].include?(note.id)"
+           end.join(" && ")}
+      end
+    }
 
-    groups[0].values.select &(Object.instance_eval proto_proc)
+    groups[0].values.select &selector
   end
 end
 
