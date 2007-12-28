@@ -1,16 +1,57 @@
+/* 
+ * Extensible hash table written in C. Should be suitable as
+ * a basis for whatever overlays/wrapper functions which you
+ * choose to add onto it.
+ *
+ * Copyright (c) 2006, 2007 Brendan MacDonell
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ * 
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include "hash_table.h"
 
 /* Use 66% of the table, to keep clustering down, */
 #define GET_SIZE(entries) (entries*3/2)
 #define GET_ENTRIES(size) (size*2/3)
 
-#define EMPTY   (void*)0x00
-#define DELETED (void*)0x01
+/* Minimum size for a hash table. */
+#define BASE_SZ 10
 
-#define BASE_SZ 16
+const int _deleted  = 0;        /* Symbolic address for DELETED. */
+const void *EMPTY   = NULL;
+const void *DELETED = &_deleted;
+
+
+unsigned int _get_next_pwr_of_two(unsigned int number)
+{
+  unsigned int shift = 1, next = number - 1;
+
+  for(; shift < sizeof(next); shift *= 2)
+    next = next | next >> shift;
+
+  return next + 1;
+}
 
 hash_t *hasht_init(unsigned int entries, void (*free_e)(void *),
                    unsigned long (*hash_e)(void *),
@@ -20,17 +61,20 @@ hash_t *hasht_init(unsigned int entries, void (*free_e)(void *),
 {
   hash_t *table = malloc(sizeof(hash_t));
 	unsigned int size;
-	unsigned int shift;
 
   size = (entries > BASE_SZ) ? entries : BASE_SZ;
-  size = GET_SIZE(size);
+  size = _get_next_pwr_of_two(GET_SIZE(size));
 
-	/* Set the size to the nearest power of 2. */
-	size -= 1;
-	for(shift = 1; shift < sizeof(size); shift *= 2) size = size | size >> shift;
-	size += 1;
+  /* Check that resizing to 150% and rounding to the next power of  *
+   * two doesn't overflow the unsigned integer.                     */
+  if(size < entries)
+    return NULL;
 
-  if(!table || !free_e || !hash_e || !hash_v || !cmp_ee || !cmp_ev) return NULL;
+  /* Ensure that all necessary function pointers are available.     *
+   * If free_e doesn't exist, on the other hand, it will be ignored *
+   * when the table is free.                                        */
+  if(!table || !hash_e || !hash_v || !cmp_ee || !cmp_ev)
+    return NULL;
 
   table->size = size;
   table->table = calloc(size, sizeof(void *));
@@ -60,7 +104,10 @@ void hasht_free(hash_t *table)
 
   size = table->size;
 
-  for(; i < size; i++) if(v[i] != EMPTY && v[i] != DELETED) free_e(v[i]);
+  if(free_e != NULL)
+    for(; i < size; i++)
+      if(v[i] != EMPTY && v[i] != DELETED)
+        free_e(v[i]);
 
   free(table->table);
   free(table);
@@ -70,56 +117,71 @@ int hasht_rehash(hash_t *table, unsigned int factor)
 {
   void **v = table->table;
   unsigned int i, size = table->size;
+  unsigned int multiple;
 
-  if(table->iter != -1) return 0;
+  if(table->iter != -1)
+    return 0;
 
-  for(i = 0; i < sizeof(factor); i++) {
-    if((1 << i) == factor) {
-      table->size *= factor;
-      if(!(table->table = calloc(table->size, sizeof(void *)))) return -1;
+  multiple = _get_next_pwr_of_two(factor);
 
-      for(i = 0; i < size; i++)
-        if(v[i] != EMPTY && v[i] != DELETED) hasht_add(table, v[i]);
+  /* Check that the next power of two won't overflow. */
+  if(multiple < factor)
+    return -1;
 
-      free(v);
-      return 1;
-    }
+  table->size *= multiple;
+
+  /* If we can't allocate a new table, restore the old state and return. */
+  if(!(table->table = calloc(table->size, sizeof(void *)))) {
+    table->size  = size;
+    table->table = v;
+    return -2;
   }
 
-  return -2;
+  /* Reset the deletions counter. */
+  table->deleted = 0;
+
+  for(i = 0; i < size; i++)
+    if(v[i] != EMPTY && v[i] != DELETED)
+      hasht_add(table, v[i]);
+
+  free(v);
+  return 1;
 }
 
 void *hasht_add(hash_t *table, void *entry)
 {
   int (*cmp_ee)(void*, void*) = table->cmp_ee;
-  unsigned int mask = table->size - 1;
-  unsigned int i = table->hash_e(entry) & mask;
-  void **v = table->table;
-  void *replaced;
+  unsigned int i, mask;
+  void **v;
 
-  if(table->iter != -1) return NULL;
-  if(table->used+1 > GET_ENTRIES(table->size)) {
-    if(hasht_rehash(table, 2) != 1) return NULL;
+  /* Make sure we're not altering a table which we're iterating over. */
+  if(table->iter != -1)
+    return NULL;
 
-    mask = table->size - 1;
-    i = table->hash_e(entry) & mask;
-    v = table->table;
-  }
+  if(table->used+1 > GET_ENTRIES(table->size))
+    if(hasht_rehash(table, 2) != 1)
+      return NULL;
 
-  while(1) {
+  mask = table->size - 1;
+  v    = table->table;
+
+  for(i = table->hash_e(entry) & mask;
+      /* loop forever */ ;
+      i = (i + 1) & mask)
+  {
     /* Insert a new value into the hash. */
     if(v[i] == EMPTY || v[i] == DELETED) {
       v[i] = entry;
       table->used++;
       return NULL;
     }
+
     /* Replace a duplicate value. */
     if(cmp_ee(entry, v[i]) == 0) {
-      replaced = v[i];
+      void *replaced = v[i];
       v[i] = entry;
       return replaced;
     }
-    i = (i + 1) & mask;
   }
 
   return NULL; /* Not reached. */
@@ -128,14 +190,18 @@ void *hasht_add(hash_t *table, void *entry)
 void *hasht_get(hash_t *table, void *value)
 {
   int (*cmp_ev)(void*, void*) = table->cmp_ev;
-  unsigned int mask = table->size - 1;
-  unsigned int i = table->hash_v(value) & mask;
+  unsigned int i, mask = table->size - 1;
   void **v = table->table;
 
-  while(v[i] != EMPTY) {
-    if(v[i] == DELETED) continue;
-    if(cmp_ev(v[i], value) == 0) return v[i];
-    i = (i + 1) & mask;
+  for(i = table->hash_v(value) & mask;
+      v[i] != EMPTY;
+      i = (i + 1) & mask)
+  {
+    if(v[i] == DELETED)
+      continue;
+
+    if(cmp_ev(v[i], value) == 0)
+      return v[i];
   }
 
   return NULL;
@@ -144,29 +210,39 @@ void *hasht_get(hash_t *table, void *value)
 void *hasht_del(hash_t *table, void *value)
 {
   int (*cmp_ev)(void*, void*) = table->cmp_ev;
-  unsigned int mask = table->size - 1;
-  unsigned int i = table->hash_v(value) & mask;
+  unsigned int i, mask = table->size - 1;
   void **v = table->table;
-  void *removed;
 
-  if(table->iter != -1) return NULL;
+  /* Make sure we're not altering a table which we're iterating over. */
+  if(table->iter != -1)
+    return NULL;
 
-  while(v[i] != EMPTY) {
-    if(v[i] == DELETED) continue;
+  for(i = table->hash_v(value) & mask;
+      v[i] != EMPTY;
+      i = (i + 1) & mask)
+  {
+    if(v[i] == DELETED)
+      continue;
+
     if(cmp_ev(v[i], value) == 0) {
-      removed = v[i];
+      void *removed = v[i];
 
-      /* Optimization: Don't add a join unless we need to. */
-      if(v[(i + 1) & mask] == EMPTY) v[i] = EMPTY;
-      else v[i] = DELETED;
+      /* Optimization: Don't add a DELETED unless we need to. */
+      if(v[(i + 1) & mask] == EMPTY) {
+        v[i] = (void*)EMPTY;
+      } else {
+        v[i] = (void*)DELETED;
 
-      /* Update the table counts. */
+        /* Rehash the table if we pass the following threshold. */
+        if(++table->deleted >= table->size/5)
+          hasht_rehash(table, 1);
+      }
+
+      /* Update the table used count. */
       table->used--;
-      if(++table->deleted >= table->size/5) hasht_rehash(table, 1);
 
       return removed;
     }
-    i = (i + 1) & mask;
   }
 
   return NULL;
