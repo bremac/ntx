@@ -33,8 +33,8 @@
 /* Default (_one character_) separators.            *
  * \n the a hard-coded record separator, due to the *
  * fgets style of line handling.                    */
-const char ID_SEP    = '\t';
-const char FIELD_SEP = ';';
+const char  ID_SEP    = '\t';
+const char *FIELD_SEP = ";";
 
 
 /* Builtin Subdirectories. */
@@ -68,6 +68,38 @@ void die(const char *fmt, ...)
   fputs("\n", stderr);
 
   exit(EXIT_FAILURE);
+}
+
+char **strtokens(char *str, const char *delim)
+{
+  unsigned int curtoken = 0, maxtokens = 8;
+  char **tokens = alloc(maxtokens * sizeof(char *));
+  char *token;
+
+  if(strlen(delim) == 0) {
+    if(tokens) release(tokens);
+    return NULL;
+  }
+
+  /* Collect tokens from strtok. */
+  for(token = strtok(str, delim); token; token = strtok(NULL, delim)) {
+    if(curtoken == maxtokens)
+      tokens = ralloc(tokens, (maxtokens *= 2));
+    tokens[curtoken++] = token;
+  }
+
+  /* Terminate with a NULL token. */
+  if(curtoken+1 == maxtokens)
+    tokens = ralloc(tokens, maxtokens+1);
+  tokens[curtoken] = NULL;
+
+  return tokens;
+}
+
+char **strrtokens(const char *str, char **buffer, const char *delim)
+{
+  *buffer = strdupe((char*)str);
+  return strtokens(*buffer, delim);
 }
 
 /* 'buf' should be SUMMARY_LENGTH + PADDING_LENGTH bytes long. */
@@ -127,7 +159,7 @@ char *ntx_tagstolist(char *id, char **tags)
   for(cur = tags; *cur; cur++) {
     strcpy(pos, *cur);
     len = strlen(*cur);
-    pos[len] = FIELD_SEP;
+    pos[len] = *FIELD_SEP;
     pos += len + 1;
   }
 
@@ -263,7 +295,7 @@ void ntx_edit(char *id)
   /* XXX: If we can't reread the file, do we need to take action? */
   ntx_summary(file, note + SUMMARY_OFFSET);
   if(strcmp(head, note + SUMMARY_OFFSET)) {
-    char *tags, *cur, *ptr;
+    char *tags, *cur;
 
     /* Fill in the identification information. */
     strncpy(note, id, ID_LENGTH);
@@ -273,10 +305,9 @@ void ntx_edit(char *id)
     if(!(tags = ntx_find(file, id)))
       die("Unable to locate note %s in %s.", id, file);
 
-    for(cur = tags + SUMMARY_OFFSET; (ptr = strchr(cur, FIELD_SEP));
-        cur = ptr + 1) {
-      *ptr = '\0';
-
+    for(cur = strtok(tags + SUMMARY_OFFSET, FIELD_SEP);
+        cur; cur = strtok(NULL, FIELD_SEP))
+    {
       /* Update the tags - O(n) search through the affected indices. */
       seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
       if(ntx_replace(file, id, note) == 0)
@@ -437,7 +468,7 @@ void ntx_put(char *id)
 
 void ntx_del(char *id)
 {
-  char file[FILE_MAX], *buf, *ptr, *cur;
+  char file[FILE_MAX], *buf, *cur;
 
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
 
@@ -445,10 +476,8 @@ void ntx_del(char *id)
   if(!(buf = ntx_find(file, id)))
     die("Unable to locate note %s in %s.", id, file);
 
-  for(cur = buf + SUMMARY_OFFSET; (ptr = strchr(cur, FIELD_SEP));
-      cur = ptr + 1) {
-    *ptr = '\0';
-
+  for(cur = strtok(buf + SUMMARY_OFFSET, FIELD_SEP);
+      cur; cur = strtok(NULL, FIELD_SEP)) {
     /* Delete the tags - O(n) search through the affected indices. */
     seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
     if(ntx_replace(file, id, NULL) == 0)
@@ -481,17 +510,15 @@ void ntx_tags(char *id)
 
     ntx_dclose(dir);
   } else { /* List all tags of a note. */
-    char file[FILE_MAX], *buf, *ptr, *cur;
+    char file[FILE_MAX], *buf, *cur;
 
     seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
     if(!(buf = ntx_find(file, id)))
       die("Unable to locate note %s in %s.", id, file);
 
-    for(cur = buf + SUMMARY_OFFSET; (ptr = strchr(cur, FIELD_SEP));
-        cur = ptr + 1) {
-      *ptr = '\0';
+    for(cur = strtok(buf + SUMMARY_OFFSET, FIELD_SEP);
+        cur; cur = strtok(NULL, FIELD_SEP))
       puts(cur);
-    }
 
     release(buf);
   }
@@ -500,7 +527,8 @@ void ntx_tags(char *id)
 void ntx_retag(char *id, char **tags)
 {
   char file[FILE_MAX], desc[SUMREC_LENGTH];
-  char *tmp, *next, *orig, **cur;
+  char **ntag, **otag, **otags;
+  char *buffer;
 
   /* Get the summary in case we need to write it. */
   seprintf(file, FILE_MAX, NOTES_DIR"/%s", id); 
@@ -512,37 +540,47 @@ void ntx_retag(char *id, char **tags)
 
   /* Read in the original listing of tags for this file. */
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
-  if(!(orig = ntx_find(file, id)))
+  if(!(buffer = ntx_find(file, id)))
     die("Unable to locate note %s in %s.", id, file);
 
+  /* Tokenize the original line. */
+  otags = strtokens(buffer + SUMMARY_OFFSET, FIELD_SEP);
+
   /* Add any tags which don't yet exist. */
-  for(cur = tags; *cur; cur++) {
-    if(!strstr(orig, *cur)) { /* Add the tag to the file. */
-      seprintf(file, FILE_MAX, TAGS_DIR"/%s", *cur);
+  for(ntag = tags; *ntag; ntag++) {
+    for(otag = otags; *otag; otag++)
+      if(strcmp(*ntag, *otag) == 0)
+        break;
+
+    if(!*otag) { /* Add the tag to the file. */
+      seprintf(file, FILE_MAX, TAGS_DIR"/%s", *ntag);
       ntx_append(file, desc);
     }
   }
 
   /* Remove any tags which don't exist any more. */
-  for(tmp = orig + SUMMARY_OFFSET; (next = strchr(tmp, FIELD_SEP));
-      tmp = next + 1) {
-    *next = '\0';
-    for(cur = tags; *cur; cur++) if(strcmp(*cur, tmp) == 0) break;
+  for(otag = otags; *otag; otag++) {
+    for(ntag = tags; *ntag; ntag++)
+      if(strcmp(*otag, *ntag) == 0)
+        break;
 
-    if(!*cur) { /* Remove any tags we didn't find. */
-      seprintf(file, FILE_MAX, TAGS_DIR"/%s", tmp);
+    if(!*ntag) { /* Remove deleted tag. */
+      seprintf(file, FILE_MAX, TAGS_DIR"/%s", *otag);
       if(ntx_replace(file, id, NULL) == 0)
         die("Unable to locate note %s in %s.", id, file);
     }
   }
 
+  release(otags);
+  release(buffer);
+
   /* Update the backreference with the new set of tags. */
-  tmp = ntx_tagstolist(id, tags);
+  buffer = ntx_tagstolist(id, tags);
   seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
-  if(ntx_replace(file, id, tmp) == 0)
+  if(ntx_replace(file, id, buffer) == 0)
     die("Unable to locate note %s in %s.", id, file);
 
-  release(tmp);
+  release(buffer);
 }
 
 void ntx_usage(int retcode)
