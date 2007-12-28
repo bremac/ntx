@@ -101,7 +101,7 @@ class NTXServer
 
     # Push it into each tag group, creating tables as necessary.
     tags.each do |tag|
-      group = (@group_by_tag[tags] ||= Hash.new)
+      group = (@group_by_tag[tag] ||= Hash.new)
       group[note.id] = note
     end
 
