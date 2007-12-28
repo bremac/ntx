@@ -23,9 +23,10 @@ void resource(void *r, void (*f)(void *))
   /* Add a managed resource to the current state. */
   struct resource__state *res;
 
-#if 0
+#ifdef DEBUG
   find_res(r);
 #endif
+
   if(!(res = malloc(sizeof(struct resource__state))))
     throw(E_NOMEM, (void*)sizeof(struct resource__state));
 
@@ -76,7 +77,6 @@ void throw(enum EXCEPTION_TYPE type, void *value)
   struct resource__state *temp, *res;
   unsigned int count;
 
-  /* XXX: Better reporting of uncaught exceptions. */
   if(!the_exception_context->last) {
     fputs("ERROR: Uncaught exception.\n", stderr);
     abort();

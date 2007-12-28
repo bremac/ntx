@@ -96,7 +96,7 @@ char **strtokens(char *str, const char *delim)
   return tokens;
 }
 
-char **strrtokens(const char *str, char **buffer, const char *delim)
+char **stratokens(const char *str, char **buffer, const char *delim)
 {
   *buffer = strdupe((char*)str);
   return strtokens(*buffer, delim);
