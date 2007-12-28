@@ -229,4 +229,8 @@ rm -r $NTXROOT
 rm $EDIT
 
 # Run regression tests as necessary.
-# . regtest_del_output.sh
+for regressiontest in "`pwd`/test-*.sh"; do
+  . $regressiontest
+  rm -r $NTXROOT
+  rm $EDIT
+done
