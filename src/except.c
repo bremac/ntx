@@ -7,24 +7,17 @@ struct exception_context the_exception_context[1] = {
   {NULL, NULL, {E_NONE, NULL}, 0}
 };
 
-void find_res(void *r)
-{
-  struct resource__state *res = the_exception_context->alloc;
-
-  for(; res && res->res != r; res = res->next);
-  if(res) {
-    fprintf(stderr, "%d is already stored in the resource heap!\n", (int)r);
-    abort();
-  }
-}
-
 void resource(void *r, void (*f)(void *))
 {
   /* Add a managed resource to the current state. */
   struct resource__state *res;
 
 #ifdef DEBUG
-  find_res(r);
+  for(; res && res->res != r; res = res->next);
+  if(res) {
+    fprintf(stderr, "%d is already stored in the resource heap!\n", (int)r);
+    abort();
+  }
 #endif
 
   if(!(res = malloc(sizeof(struct resource__state))))
