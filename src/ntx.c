@@ -55,8 +55,6 @@ char *ntx_dread(n_dir dir);
 void ntx_dclose(n_dir dir);
 
 
-/* XXX: Update functions should write and rename a temporary file. */
-
 void die(const char *fmt, ...)
 {
   va_list args;
