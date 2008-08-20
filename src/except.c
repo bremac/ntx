@@ -7,24 +7,17 @@ struct exception_context the_exception_context[1] = {
   {NULL, NULL, {E_NONE, NULL}, 0}
 };
 
-void find_res(void *r)
-{
-  struct resource__state *res = the_exception_context->alloc;
-
-  for(; res && res->res != r; res = res->next);
-  if(res && res->res == r) {
-    fprintf(stderr, "%d is already stored in the resource heap!\n", (int)r);
-    exit(EXIT_FAILURE);
-  }
-}
-
 void resource(void *r, void (*f)(void *))
 {
   /* Add a managed resource to the current state. */
   struct resource__state *res;
 
-#if 0
-  find_res(r);
+#ifdef DEBUG
+  for(; res && res->res != r; res = res->next);
+  if(res) {
+    fprintf(stderr, "%d is already stored in the resource heap!\n", (int)r);
+    abort();
+  }
 #endif
 
   if(!(res = malloc(sizeof(struct resource__state))))
@@ -56,6 +49,7 @@ void release_pop(void *r, unsigned int rel)
       if(!res || res->res == r) break;
     }
   }
+
   if(!state) {
     /* No current state; Search the entire global state.   *
      * This _can_ be reached if we can't locate the state. */
@@ -76,10 +70,9 @@ void throw(enum EXCEPTION_TYPE type, void *value)
   struct resource__state *temp, *res;
   unsigned int count;
 
-  /* XXX: Better reporting of uncaught exceptions. */
   if(!the_exception_context->last) {
     fputs("ERROR: Uncaught exception.\n", stderr);
-    exit(EXIT_FAILURE);
+    abort();
   }
 
   for(res = the_exception_context->alloc,
@@ -91,6 +84,7 @@ void throw(enum EXCEPTION_TYPE type, void *value)
     res = temp;
   }
 
+  the_exception_context->alloc = res;
   the_exception_context->passthrough.type  = type;
   the_exception_context->passthrough.value = value;
   longjmp(the_exception_context->last->env, 1);

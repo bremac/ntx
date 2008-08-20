@@ -33,8 +33,10 @@ void *ralloc(void *buf, unsigned int size)
 {
   void *tmp = realloc(buf, size);
   if(!tmp) throw(E_NOMEM, NULL);
-  release_pop(buf, 0);
-  resource(tmp, free);
+  if(tmp != buf) { /* Replace the entry if the pointer has changed. */
+    release_pop(buf, 0);
+    resource(tmp, free);
+  }
   return tmp;
 }
 

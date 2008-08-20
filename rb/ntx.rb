@@ -14,6 +14,7 @@ class ClosedStruct
       # expose a fixed arity to clients.
       class_eval %{
         def initialize(#{fields.join ","})
+          super
           #{fields.map {|f| "@#{f} = #{f}"}.join "\n"}
         end
       }
