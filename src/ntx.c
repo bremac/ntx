@@ -492,40 +492,42 @@ void ntx_put(char *id)
   release(f);
 }
 
-void ntx_del(char *id)
+void ntx_del(char **ids)
 {
   char file[FILE_MAX];
   char *buf, *cur;
   char *state = NULL;
 
-  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
+  for(; *ids != NULL; ids++) {
+    seprintf(file, FILE_MAX, REFS_DIR"/%.2s", *ids);
 
-  /* Find the line describing the tags of the given ID. */
-  if(!(buf = ntx_find(file, id)))
-    die("Unable to locate note %s in %s.", id, file);
+    /* Find the line describing the tags of the given ID. */
+    if(!(buf = ntx_find(file, *ids)))
+      die("Unable to locate note %s in %s.", *ids, file);
 
-  for(cur = strrtok(buf + SUMMARY_OFFSET, &state, FIELD_SEP);
-      cur != NULL;
-      cur = strrtok(NULL, &state, FIELD_SEP)) {
-    /* Delete the tags - O(n) search through the affected indices. */
-    seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
-    if(ntx_replace(file, id, NULL) == 0)
-      die("Problem removing info for note %s from %s.", id, file);
+    for(cur = strrtok(buf + SUMMARY_OFFSET, &state, FIELD_SEP);
+        cur != NULL;
+        cur = strrtok(NULL, &state, FIELD_SEP)) {
+      /* Delete the tags - O(n) search through the affected indices. */
+      seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
+      if(ntx_replace(file, *ids, NULL) == 0)
+        die("Problem removing info for note %s from %s.", *ids, file);
+    }
+    release(buf);
+
+    /* Remove it from the index. */
+    if(ntx_replace(INDEX_FILE, *ids, NULL) == 0)
+      die("Problem removing info for note %s from index.", *ids);
+
+    /* Remove the backreference. */
+    seprintf(file, FILE_MAX, REFS_DIR"/%.2s", *ids);
+    if(ntx_replace(file, *ids, NULL) == 0)
+      die("Problem removing info for note %s from %s.", *ids, file);
+
+    /* Remove the note itself from NOTES_DIR. */
+    seprintf(file, FILE_MAX, NOTES_DIR"/%s", *ids);
+    if(remove(file) != 0) die("Unable to remove note %s.", *ids);
   }
-  release(buf);
-
-  /* Remove it from the index. */
-  if(ntx_replace(INDEX_FILE, id, NULL) == 0)
-    die("Problem removing info for note %s from index.", id);
-
-  /* Remove the backreference. */
-  seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
-  if(ntx_replace(file, id, NULL) == 0)
-    die("Problem removing info for note %s from %s.", id, file);
-
-  /* Remove the note itself from NOTES_DIR. */
-  seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
-  if(remove(file) != 0) die("Unable to remove note %s.", id);
 }
 
 void ntx_tags(char *id)
@@ -619,11 +621,11 @@ void ntx_usage(int retcode)
 {
   /* Abbreviated usage information for ntx. */
   puts("Usage:\tntx [mode] [arguments] ..\n");
-  puts("Modes:\tadd  [tags ..]\t\tAdd a note to tags.");
-  puts("\tedit [hex]\t\tEdit the note with the ID 'hex'.");
+  puts("Modes:\tadd  [tags ..]\t\tAdd a note to the supplied tags.");
+  puts("\tedit [hex ..]\t\tEdit the note(s) in the list of IDs 'hex'.");
   puts("\tlist <tags ..>\t\tList the notes in the intersection of 'tags'.");
   puts("\tput  [hex]\t\tPrint the note with the ID 'hex' to STDOUT.");
-  puts("\trm   [hex]\t\tDelete the note identified by the ID 'hex'.");
+  puts("\trm   [hex ..]\t\tDelete the note(s) in the list of IDs 'hex'.");
   puts("\ttag  <hex>\t\tPrint all tags, or those attached to the ID 'hex'.\n");
   puts("\ttag  [hex] [tags ..]\tRe-tag 'hex' with the list 'tags'.");
   puts("\t-h or --help\t\tPrint this information.\n");
@@ -667,7 +669,7 @@ int main(int argc, char **argv)
     else if(!strcmp(argv[1], "edit") && argc >= 3) ntx_edit(argv+2);
     else if(!strcmp(argv[1], "list") && argc >= 2) ntx_list(argv+2, argc - 2);
     else if(!strcmp(argv[1], "put") &&  argc == 3) ntx_put(argv[2]);
-    else if(!strcmp(argv[1], "rm")  &&  argc == 3) ntx_del(argv[2]);
+    else if(!strcmp(argv[1], "rm")  &&  argc == 3) ntx_del(argv+2);
     else if(!strcmp(argv[1], "tag") &&  argc > 3)  ntx_retag(argv[2], argv+3);
     else if(!strcmp(argv[1], "tag") && (argc == 2 || argc == 3))
                                                    ntx_tags(argv[2]);
