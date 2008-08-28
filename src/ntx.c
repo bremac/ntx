@@ -395,17 +395,23 @@ int cmp_val(void *a, void *b)
 void ntx_list(char **tags, unsigned int tagc)
 {
   char line[SUMREC_LENGTH];
+  exception_t exc;
   gzFile *f;
 
   /* Too many tags for proper ref-counting, or even sane evaluation. */
   if(tagc > 127) die("Too many (more than 127) tags.");
 
   if(tagc == 0) { /* No tags specified, open the index. */
-    f = gzf_open(INDEX_FILE, "r");
-
-    /* Duplicate each line from the index to STDOUT. */
-    while(gzf_getl(f, line, SUMREC_LENGTH)) fputs(line, stdout);
-    release(f);
+    try {
+      /* Duplicate each line from the index to STDOUT. */
+      f = gzf_open(INDEX_FILE, "r");
+      while(gzf_getl(f, line, SUMREC_LENGTH)) fputs(line, stdout);
+      release(f);
+    } catch(exc) {
+      /* Suppress errors due to a missing index, as this simply *
+       * means that there are no notes in the database.         */
+      if(exc.type != E_FACCESS) throw(exc.type, exc.value);
+    }
   } else if(tagc == 1) { /* No need to calculate the intersection. */
     char name[FILE_MAX];
 
