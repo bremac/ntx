@@ -302,50 +302,52 @@ void ntx_add(char **tags)
   fputs(note, stdout);
 }
 
-void ntx_edit(char *id)
+void ntx_edit(char **ids)
 {
   char file[FILE_MAX], head[SUMMARY_LENGTH + PADDING_LENGTH];
   char note[SUMREC_LENGTH];
   char *state = NULL;
 
-  seprintf(file, FILE_MAX, NOTES_DIR"/%s", id);
+  for(; *ids != NULL; ids++) {
+    seprintf(file, FILE_MAX, NOTES_DIR"/%s", *ids);
 
-  /* Check that the note exists first, then edit it. */
-  ntx_summary(file, head);
-  ntx_editor(file);
+    /* Check that the note exists first, then edit it. */
+    ntx_summary(file, head);
+    ntx_editor(file);
 
-  /* See if the header has changed; If so, rewrite the headers. */
-  /* XXX: If we can't reread the file, do we need to take action? */
-  ntx_summary(file, note + SUMMARY_OFFSET);
-  if(strcmp(head, note + SUMMARY_OFFSET)) {
-    char *tags, *cur;
+    /* See if the header has changed; If so, rewrite the headers. */
+    /* XXX: If we can't reread the file, do we need to take action? */
+    ntx_summary(file, note + SUMMARY_OFFSET);
+    if(strcmp(head, note + SUMMARY_OFFSET)) {
+      char *tags, *cur;
 
-    /* Fill in the identification information. */
-    strncpy(note, id, ID_LENGTH);
-    note[ID_LENGTH] = ID_SEP;
+      /* Fill in the identification information. */
+      strncpy(note, *ids, ID_LENGTH);
+      note[ID_LENGTH] = ID_SEP;
 
-    seprintf(file, FILE_MAX, REFS_DIR"/%.2s", id);
-    if(!(tags = ntx_find(file, id)))
-      die("Unable to locate note %s in %s.", id, file);
+      seprintf(file, FILE_MAX, REFS_DIR"/%.2s", *ids);
+      if(!(tags = ntx_find(file, *ids)))
+        die("Unable to locate note %s in %s.", *ids, file);
 
-    for(cur = strrtok(tags + SUMMARY_OFFSET, &state, FIELD_SEP);
-        cur != NULL;
-        cur = strrtok(NULL, &state, FIELD_SEP))
-    {
-      /* Update the tags - O(n) search through the affected indices. */
-      seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
-      if(ntx_replace(file, id, note) == 0)
-        die("Unable to locate note %s in %s.", id, file);
+      for(cur = strrtok(tags + SUMMARY_OFFSET, &state, FIELD_SEP);
+          cur != NULL;
+          cur = strrtok(NULL, &state, FIELD_SEP))
+      {
+        /* Update the tags - O(n) search through the affected indices. */
+        seprintf(file, FILE_MAX, TAGS_DIR"/%s", cur);
+        if(ntx_replace(file, *ids, note) == 0)
+          die("Unable to locate note %s in %s.", *ids, file);
+      }
+      release(tags);
+
+      /* Update the index file. */
+      if(ntx_replace(INDEX_FILE, *ids, note) == 0)
+        die("Unable to locate note %s in %s.", *ids, file);
     }
-    release(tags);
 
-    /* Update the index file. */
-    if(ntx_replace(INDEX_FILE, id, note) == 0)
-      die("Unable to locate note %s in %s.", id, file);
+    /* Dump the summary to STDOUT as confirmation that everything went well. */
+    fputs(note, stdout);
   }
-
-  /* Dump the summary to STDOUT as confirmation that everything went well. */
-  fputs(note, stdout);
 }
 
 
@@ -662,7 +664,7 @@ int main(int argc, char **argv)
 
   try {
     if(!strcmp(argv[1], "add")    &&    argc >= 3) ntx_add(argv+2);
-    else if(!strcmp(argv[1], "edit") && argc == 3) ntx_edit(argv[2]);
+    else if(!strcmp(argv[1], "edit") && argc >= 3) ntx_edit(argv+2);
     else if(!strcmp(argv[1], "list") && argc >= 2) ntx_list(argv+2, argc - 2);
     else if(!strcmp(argv[1], "put") &&  argc == 3) ntx_put(argv[2]);
     else if(!strcmp(argv[1], "rm")  &&  argc == 3) ntx_del(argv[2]);
